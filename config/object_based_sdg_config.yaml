@@ -16,7 +16,7 @@ resolution:
 - 512
 camera_look_at_target_offset: 0.10
 camera_distance_to_target_min_max:
-  - 5.00
+  - 6.00
   - 10.00
 labeled_assets_and_properties:
 - url: "omniverse://localhost/Library/Datasets/SM_Angle.usd"

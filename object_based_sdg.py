@@ -152,7 +152,7 @@ bbox_cache = None
 labeled_radii = {}
 
 labeled_yaw_offsets = {}
-ROTATION_SPEED_DEG_PER_FRAME = 25.0  # tweak speed as you like
+ROTATION_SPEED_DEG_PER_FRAME = 26.0  # tweak speed as you like
 RADIUS_SCALE = 1.2      # was 1.1 inside the function
 LABEL_MARGIN = 0.05     # extra gap between objects in meters
 MAX_PLACEMENT_TRIES = 100
