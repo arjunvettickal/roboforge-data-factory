@@ -7,7 +7,7 @@ working_area_size:
 - 7
 - 3
 rt_subframes: 8
-num_frames: 4000
+num_frames: 10
 num_cameras: 1
 disable_render_products_between_captures: true
 simulation_duration_between_captures: 0.15
