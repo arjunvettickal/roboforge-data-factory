@@ -1,0 +1,228 @@
+launch_config:
+  renderer: RaytracedLighting
+  headless: true
+env_url: ''
+working_area_size:
+- 7
+- 7
+- 3
+rt_subframes: 8
+num_frames: 4000
+num_cameras: 1
+disable_render_products_between_captures: true
+simulation_duration_between_captures: 0.15
+resolution:
+- 512
+- 512
+camera_look_at_target_offset: 0.10
+camera_distance_to_target_min_max:
+  - 5.00
+  - 10.00
+labeled_assets_and_properties:
+- url: "omniverse://localhost/Library/Datasets/SM_Angle.usd"
+  label: "l_bracket"
+  count: 3
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+- url: "omniverse://localhost/Library/Datasets/SM_ballstem.usd"
+  label: "ballstem"
+  count: 3
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Datasets/SM_Bilincs_Bilincs_003.usd"
+  label: "u_bracket"
+  count: 3
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Datasets/SM_body.usd"
+  label: "body"
+  count: 3
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Datasets/SM_Bonnet.usd"
+  label: "bonnet"
+  count: 3
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Datasets/SM_Erveg2.usd"
+  label: "cable_shoe"
+  count: 3
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Datasets/SM_handle.usd"
+  label: "handle"
+  count: 3
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Datasets/SM_Pipe_Clamp_25.usd"
+  label: "pipe_clamp"
+  count: 3
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Datasets/SM_Rightangle2.usd"
+  label: "angle_bracket"
+  count: 3
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Datasets/SM_seat.usd" 
+  label: "seat"
+  count: 3
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+writer_type: CocoWriter
+writer_kwargs:
+  output_dir: "_out_coco_raw_test_"
+  image_output_format: "jpg"
+  semantic_types: ["class"]
+  coco_categories:
+    l_bracket:
+      name: "l_bracket"
+      id: 1
+      supercategory: "part"
+      isthing: 1
+      color: [255, 0, 0]  
+    u_bracket:
+      name: "u_bracket"
+      id: 2
+      supercategory: "part"
+      isthing: 1
+      color: [0, 0, 255]
+    angle_bracket:
+      name: "angle_bracket"
+      id: 3
+      supercategory: "part"
+      isthing: 1
+      color: [64, 192, 64]
+    seat:
+      name: "seat"
+      id: 4
+      supercategory: "part"
+      isthing: 1
+      color: [192, 64, 64]
+    pipe_clamp:
+      name: "pipe_clamp"
+      id: 5
+      supercategory: "part"
+      isthing: 1
+      color: [128, 0, 255]
+    handle:
+      name: "handle"
+      id: 6
+      supercategory: "part"
+      isthing: 1
+      color: [255, 128, 0]
+    bonnet:
+      name: "bonnet"
+      id: 7
+      supercategory: "part"
+      isthing: 1
+      color: [255, 0, 255]
+    body:
+      name: "body"
+      id: 8
+      supercategory: "part"
+      isthing: 1
+      color: [255, 255, 0]
+    ballstem:
+      name: "ballstem"
+      id: 9
+      supercategory: "part"
+      isthing: 1
+      color: [0, 255, 0]
+    cable_shoe:
+      name: "cable_shoe"
+      id: 10
+      supercategory: "part"
+      isthing: 1
+      color: [0, 255, 255]
+    
+shape_distractors_types:
+- capsule
+- cone
+- cylinder
+- sphere
+- cube
+shape_distractors_scale_min_max:
+  - 0.015
+  - 0.15
+shape_distractors_num: 10
+mesh_distractors_urls:
+- /Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxD_04_1847.usd
+- /Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_01_414.usd
+- /Isaac/Environments/Simple_Warehouse/Props/S_TrafficCone.usd
+- /Isaac/Environments/Simple_Warehouse/Props/S_WetFloorSign.usd
+- /Isaac/Environments/Simple_Warehouse/Props/SM_BarelPlastic_B_03.usd
+- /Isaac/Environments/Office/Props/SM_Board.usd
+- /Isaac/Environments/Office/Props/SM_Book_03.usd
+- /Isaac/Environments/Office/Props/SM_Book_34.usd
+- /Isaac/Environments/Office/Props/SM_BookOpen_01.usd
+- /Isaac/Environments/Office/Props/SM_Briefcase.usd
+- /Isaac/Environments/Office/Props/SM_Extinguisher.usd
+- /Isaac/Environments/Hospital/Props/SM_GasCart_01b.usd
+- /Isaac/Environments/Hospital/Props/SM_MedicalBag_01a.usd
+- /Isaac/Environments/Hospital/Props/SM_MedicalBox_01g.usd
+- /Isaac/Environments/Hospital/Props/SM_Toweldispenser_01a.usd
+mesh_distractors_scale_min_max:
+  - 0.35
+  - 1.35
+mesh_distractors_num: 0
+floor_material_urls:
+  - "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Masonry/Facade_Brick_Red_Clinker.mdl"
+floors:
+  - "omniverse://localhost/Library/Materials/brick_floor.usd"
+  - "omniverse://localhost/Library/Materials/carbon_filer.usd"
+  - "omniverse://localhost/Library/Materials/cardboard_low_qality.usd"
+  - "omniverse://localhost/Library/Materials/cardboard.usd"
+  - "omniverse://localhost/Library/Materials/ceramic_tiles_glazed_subway.usd"
+  - "omniverse://localhost/Library/Materials/PCB.usd"
+  - "omniverse://localhost/Library/Materials/retroreflective_warnstripes.usd"
+  - "omniverse://localhost/Library/Materials/wood_tiles_ash_multicolor.usd"
+asset_mdl_materials:
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Copper_Brushed.mdl"
+    subidentifier: "Copper_Brushed"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Metal_Cast.mdl"
+    subidentifier: "Metal_Cast"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Aluminum_Anodized.mdl"
+    subidentifier: "Aluminum_Anodized"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Chromium_Brushed.mdl"
+    subidentifier: "Chromium_Brushed"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Steel_Painted.mdl"
+    subidentifier: "Steel_Painted"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Chalk_Paint_Pebbles.mdl"
+    subidentifier: "Chalk_Paint_Pebbles"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Leather/Suede_Leather.mdl"
+    subidentifier: "Suede_Leather"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Plaster/Stucco.mdl"
+    subidentifier: "Stucco"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Copper_Antique_Brushed_Patinated.mdl"
+    subidentifier: "Copper_Antique_Brushed_Patinated"
+

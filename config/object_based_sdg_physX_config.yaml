@@ -1,0 +1,202 @@
+launch_config:
+  renderer: RaytracedLighting
+  headless: false
+env_url: ''
+working_area_size:
+- 3
+- 3
+- 1
+rt_subframes: 4
+num_frames: 10
+num_cameras: 1
+disable_render_products_between_captures: false
+simulation_duration_between_captures: 0.15
+resolution:
+- 640
+- 640
+camera_look_at_target_offset: 0.10
+camera_distance_to_target_min_max:
+  - 5.00
+  - 10.00
+labeled_assets_and_properties:
+- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_Angle.usd"
+  label: "sm_angle"
+  count: 2
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_ballstem.usd"
+  label: "sm_ballstem"
+  count: 2
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_Bilincs_Bilincs_003.usd"
+  label: "sm_bilincs_bilincs_003"
+  count: 2
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_body.usd"
+  label: "sm_body"
+  count: 2
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_bonnet.usd"
+  label: "sm_bonnet"
+  count: 2
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_Erveg2.usd"
+  label: "sm_erveg2"
+  count: 2
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_handle.usd"
+  label: "sm_handle"
+  count: 2
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_Pipe_Clamp_25.usd"
+  label: "sm_pipe_clamp_25"
+  count: 2
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_Rightangle2.usd"
+  label: "sm_rightangle2"
+  count: 2
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_seat.usd"
+  label: "sm_seat"
+  count: 2
+  floating: true
+  scale_min_max:
+  - 0.85
+  - 1.35
+
+writer_type: CocoWriter
+writer_kwargs:
+  output_dir: "_out_coco_physX"
+  image_output_format: "jpg"
+  semantic_types: ["class"]
+  coco_categories:
+    sm_angle:
+      name: "sm_angle"
+      id: 1
+      supercategory: "part"
+      isthing: 1
+      color: [255, 0, 0]   # <- add a 3-element RGB list
+    sm_ballstem:
+      name: "sm_ballstem"
+      id: 2
+      supercategory: "part"
+      isthing: 1
+      color: [0, 255, 0]
+    sm_bilincs_bilincs_003:
+      name: "sm_bilincs_bilincs_003"
+      id: 3
+      supercategory: "part"
+      isthing: 1
+      color: [0, 0, 255]
+    sm_body:
+      name: "sm_body"
+      id: 4
+      supercategory: "part"
+      isthing: 1
+      color: [255, 255, 0]
+
+    sm_bonnet:
+      name: "sm_bonnet"
+      id: 5
+      supercategory: "part"
+      isthing: 1
+      color: [255, 0, 255]
+
+    sm_erveg2:
+      name: "sm_erveg2"
+      id: 6
+      supercategory: "part"
+      isthing: 1
+      color: [0, 255, 255]
+
+    sm_handle:
+      name: "sm_handle"
+      id: 7
+      supercategory: "part"
+      isthing: 1
+      color: [255, 128, 0]
+
+    sm_pipe_clamp_25:
+      name: "sm_pipe_clamp_25"
+      id: 8
+      supercategory: "part"
+      isthing: 1
+      color: [128, 0, 255]
+
+    sm_rightangle2:
+      name: "sm_rightangle2"
+      id: 9
+      supercategory: "part"
+      isthing: 1
+      color: [64, 192, 64]
+
+    sm_seat:
+      name: "sm_seat"
+      id: 10
+      supercategory: "part"
+      isthing: 1
+      color: [192, 64, 64]
+shape_distractors_types:
+- capsule
+- cone
+- cylinder
+- sphere
+- cube
+shape_distractors_scale_min_max:
+  - 0.015
+  - 0.15
+shape_distractors_num: 10
+mesh_distractors_urls:
+- /Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxD_04_1847.usd
+- /Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_01_414.usd
+- /Isaac/Environments/Simple_Warehouse/Props/S_TrafficCone.usd
+- /Isaac/Environments/Simple_Warehouse/Props/S_WetFloorSign.usd
+- /Isaac/Environments/Simple_Warehouse/Props/SM_BarelPlastic_B_03.usd
+- /Isaac/Environments/Office/Props/SM_Board.usd
+- /Isaac/Environments/Office/Props/SM_Book_03.usd
+- /Isaac/Environments/Office/Props/SM_Book_34.usd
+- /Isaac/Environments/Office/Props/SM_BookOpen_01.usd
+- /Isaac/Environments/Office/Props/SM_Briefcase.usd
+- /Isaac/Environments/Office/Props/SM_Extinguisher.usd
+- /Isaac/Environments/Hospital/Props/SM_GasCart_01b.usd
+- /Isaac/Environments/Hospital/Props/SM_MedicalBag_01a.usd
+- /Isaac/Environments/Hospital/Props/SM_MedicalBox_01g.usd
+- /Isaac/Environments/Hospital/Props/SM_Toweldispenser_01a.usd
+mesh_distractors_scale_min_max:
+  - 0.35
+  - 1.35
+mesh_distractors_num: 0

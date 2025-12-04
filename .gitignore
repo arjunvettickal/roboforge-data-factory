@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual envs
+.env/
+.venv/
+
+# Training / experiment outputs
+runs/
+weights/
+logs/
+
+# Isaac Sim caches (if any in this folder)
+*.usd.tmp
+*.log
