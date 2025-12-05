@@ -373,6 +373,50 @@ def sample_positions_for_prims(prims, radii, min_x, max_x, min_y, max_y, margin=
     return positions
 
 
+def _get_or_compute_radius(prim, radii):
+    r = radii.get(prim)
+    if r is None:
+        bbox = bbox_cache.ComputeWorldBound(prim)
+        size = bbox.GetRange().GetSize()
+        r = 0.5 * max(size[0], size[1]) * RADIUS_SCALE
+        radii[prim] = r
+    return r
+
+
+def sample_positions_for_prims_with_existing(
+    prims,
+    radii,
+    min_x,
+    max_x,
+    min_y,
+    max_y,
+    existing_circles,
+    margin=LABEL_MARGIN,
+    max_tries=MAX_PLACEMENT_TRIES,
+):
+    """Sample positions avoiding overlap with already placed circles."""
+    positions = {}
+    circles = list(existing_circles)  # list of (x, y, r)
+
+    for prim in prims:
+        r = _get_or_compute_radius(prim, radii)
+        for _ in range(max_tries):
+            x = random.uniform(min_x + r, max_x - r)
+            y = random.uniform(min_y + r, max_y - r)
+            if all((x - px) ** 2 + (y - py) ** 2 >= (r + pr + margin) ** 2 for px, py, pr in circles):
+                positions[prim] = (x, y)
+                circles.append((x, y, r))
+                break
+        else:
+            positions[prim] = (
+                random.uniform(min_x, max_x),
+                random.uniform(min_y, max_y),
+            )
+            circles.append((positions[prim][0], positions[prim][1], r))
+
+    return positions, circles
+
+
 def randomize_labeled_poses(labeled_prims, labeled_radii, min_x, max_x, min_y, max_y, object_z, frame_idx):
     """Randomize positions & *continuous* yaw using per-prim radii to avoid overlap."""
     if not labeled_prims:
@@ -416,6 +460,58 @@ def randomize_distractor_poses(prims, min_x, max_x, min_y, max_y, object_z):
             location=(x, y, object_z),
             rotation=(0.0, 0.0, yaw),
         )
+
+
+def randomize_labeled_poses_nonoverlap(labeled_prims, labeled_radii, min_x, max_x, min_y, max_y, object_z, frame_idx):
+    """Randomize labeled poses while avoiding overlap; returns updated circle list for further sampling."""
+    if not labeled_prims:
+        return {}, []
+
+    positions, circles = sample_positions_for_prims_with_existing(
+        prims=labeled_prims,
+        radii=labeled_radii,
+        min_x=min_x,
+        max_x=max_x,
+        min_y=min_y,
+        max_y=max_y,
+        existing_circles=[],
+    )
+
+    for prim, (x, y) in positions.items():
+        base_yaw = labeled_yaw_offsets.get(prim, 0.0)
+        yaw = (base_yaw + frame_idx * ROTATION_SPEED_DEG_PER_FRAME) % 360.0
+        object_based_sdg_utils.set_transform_attributes(prim, location=(x, y, object_z), rotation=(yaw, 0.0, yaw))
+    return positions, circles
+
+
+def randomize_distractor_poses_nonoverlap(
+    prims,
+    radii,
+    min_x,
+    max_x,
+    min_y,
+    max_y,
+    object_z,
+    existing_circles,
+):
+    """Randomize distractors avoiding both labeled assets and other distractors."""
+    if not prims:
+        return existing_circles
+
+    positions, circles = sample_positions_for_prims_with_existing(
+        prims=prims,
+        radii=radii,
+        min_x=min_x,
+        max_x=max_x,
+        min_y=min_y,
+        max_y=max_y,
+        existing_circles=existing_circles,
+    )
+
+    for prim, (x, y) in positions.items():
+        yaw = random.uniform(0.0, 360.0)
+        object_based_sdg_utils.set_transform_attributes(prim, location=(x, y, object_z), rotation=(0.0, 0.0, yaw))
+    return circles
 
 
 # ENVIRONMENT
@@ -704,6 +800,17 @@ bbox_cache = UsdGeom.BBoxCache(
     [UsdGeom.Tokens.default_],
 )
 
+# Ensure prim names are USD-valid (can't start with a digit, no spaces, etc.)
+def sanitize_prim_name(name: str, prefix: str = "prim"):
+    clean = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in (name or ""))
+    if not clean:
+        clean = prefix
+    if clean[0].isdigit():
+        clean = f"{prefix}_{clean}"
+    if not Sdf.Path.IsValidIdentifier(clean):
+        clean = f"{prefix}_{abs(hash(clean)) % 10000}"
+    return clean
+
 # DISTRACTORS
 # Add shape distractors to the environment (static, pose-randomized each frame)
 shape_distractors_types = config.get("shape_distractors_types", ["capsule", "cone", "cylinder", "sphere", "cube"])
@@ -724,6 +831,8 @@ for i in range(shape_distractors_num):
     object_based_sdg_utils.add_colliders(prim)
     shape_distractors.append(prim)
 
+shape_distractors_radii = {}
+
 # Add mesh distractors to the environment
 mesh_distactors_urls = config.get("mesh_distractors_urls", [])
 mesh_distactors_scale_min_max = config.get("mesh_distractors_scale_min_max", (0.1, 2.0))
@@ -737,7 +846,7 @@ for i in range(mesh_distactors_num):
     )
     rand_loc = (rand_loc[0], rand_loc[1], OBJECT_Z)
     mesh_url = random.choice(mesh_distactors_urls)
-    prim_name = os.path.basename(mesh_url).split(".")[0]
+    prim_name = sanitize_prim_name(os.path.basename(mesh_url).split(".")[0], prefix="distractor")
     prim_path = omni.usd.get_stage_next_free_path(stage, f"/World/Distractors/{prim_name}", False)
     prim = stage.DefinePrim(prim_path, "Xform")
     asset_path = mesh_url if mesh_url.startswith("omniverse://") else assets_root_path + mesh_url
@@ -748,6 +857,8 @@ for i in range(mesh_distactors_num):
     # Optional: clear semantics on distractors
     # upgrade_prim_semantics_to_labels(prim, include_descendants=True)
     # remove_labels(prim, include_descendants=True)
+
+mesh_distractors_radii = {}
 
 # REPLICATOR
 # Disable capturing every frame (capture will be triggered manually using the step function)
@@ -930,7 +1041,7 @@ for i in range(num_frames):
     # --------------------------------------------------------
 
     # Per-frame pose randomization for targets and distractors
-    randomize_labeled_poses(
+    _, occupied_circles = randomize_labeled_poses_nonoverlap(
         labeled_prims=labeled_prims,
         labeled_radii=labeled_radii,
         min_x=min_x,
@@ -940,31 +1051,36 @@ for i in range(num_frames):
         object_z=OBJECT_Z,
         frame_idx=i,
     )
-        # Randomize MDL materials on labeled assets
+    # Randomize MDL materials on labeled assets
     # (every frame, or use i % N if you want them to change less often)
     if i % 3 == 0:  # change every 3 frames
         randomize_asset_materials(labeled_prims, asset_mdl_materials)
+        randomize_asset_materials(mesh_distractors, asset_mdl_materials)
 
 
 
 
 
-    randomize_distractor_poses(
+    occupied_circles = randomize_distractor_poses_nonoverlap(
         prims=shape_distractors,
+        radii=shape_distractors_radii,
         min_x=min_x,
         max_x=max_x,
         min_y=min_y,
         max_y=max_y,
         object_z=OBJECT_Z + SHAPE_DISTRACTOR_Z_OFFSET,
+        existing_circles=occupied_circles,
     )
 
-    randomize_distractor_poses(
+    occupied_circles = randomize_distractor_poses_nonoverlap(
         prims=mesh_distractors,
+        radii=mesh_distractors_radii,
         min_x=min_x,
         max_x=max_x,
         min_y=min_y,
         max_y=max_y,
         object_z=OBJECT_Z,
+        existing_circles=occupied_circles,
     )
 
     # Randomize floor material every frame (optional)
