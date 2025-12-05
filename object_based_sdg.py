@@ -16,6 +16,9 @@
 import argparse
 import json
 import os
+import shutil
+from pathlib import Path
+import glob
 
 import yaml
 from isaacsim import SimulationApp
@@ -120,7 +123,6 @@ simulation_app = SimulationApp(launch_config=launch_config)
 
 import random
 import time
-from itertools import chain
 import math
 import colorsys
 
@@ -161,7 +163,7 @@ MAX_PLACEMENT_TRIES = 100
 TINT_STRENGTH = 1.0  # 0 = no tint (pure white), 1 = full crazy color
 
 def sample_light_color():
-    """Return a soft-tinted (r, g, b) in 0–1 range."""
+    """Return a soft-tinted (r, g, b) in 0-1 range."""
     # Still random hue
     h = random.random()
 
@@ -178,6 +180,161 @@ def sample_light_color():
     b = 1.0 * (1 - t) + b * t
 
     return r, g, b
+
+
+def convert_coco_to_yolo_and_split(coco_root_path, yolo_root_path=None, train_ratio=0.8, seed=42):
+    """Convert COCO annotations to YOLO labels and split into train/val folders (no ultralytics dependency)."""
+
+    def _pick_coco_json(search_root: Path, preferred_stem: str = "coco_annotations"):
+        cand = []
+        for p in search_root.glob("*.json"):
+            cand.append(p)
+        # If none in root, check Replicator subdir
+        rep_dir = search_root / "Replicator"
+        if rep_dir.exists():
+            cand.extend(rep_dir.glob("*.json"))
+        if not cand:
+            return None
+        # Prefer files starting with preferred_stem, then by size/time
+        def keyfunc(p):
+            stem_ok = p.stem.startswith(preferred_stem)
+            return (not stem_ok, -p.stat().st_size, -p.stat().st_mtime)
+        cand.sort(key=keyfunc)
+        return cand[0]
+
+    coco_root = Path(coco_root_path)
+    ann_path = None
+    if coco_root.exists():
+        ann_path = _pick_coco_json(coco_root)
+    if ann_path is None and coco_root.parent.exists():
+        # search sibling directories like coco_out_0001, coco_out_0002
+        siblings = sorted(coco_root.parent.glob(f"{coco_root.name}*"))
+        for sib in reversed(siblings):
+            ann_path = _pick_coco_json(sib)
+            if ann_path:
+                coco_root = sib
+                break
+    if ann_path is None:
+        print(f"[YOLO-CONVERT] No COCO json found under {coco_root_path} or siblings, skipping conversion.")
+        return
+
+    try:
+        with open(ann_path, "r") as f:
+            coco = json.load(f)
+    except Exception as exc:
+        print(f"[YOLO-CONVERT] Failed to read {ann_path}: {exc}")
+        return
+
+    images = coco.get("images", [])
+    annotations = coco.get("annotations", [])
+    categories = coco.get("categories", [])
+    if not images or not annotations or not categories:
+        print(f"[YOLO-CONVERT] Missing keys in COCO json (images/annotations/categories); skipping.")
+        return
+
+    cat_id_to_yolo = {}
+    for idx, cat in enumerate(sorted(categories, key=lambda c: c.get("id", 0))):
+        cat_id_to_yolo[cat.get("id")] = idx
+    yolo_id_to_name = [None] * len(cat_id_to_yolo)
+    for cat in categories:
+        yid = cat_id_to_yolo.get(cat.get("id"))
+        if yid is not None and yid < len(yolo_id_to_name):
+            yolo_id_to_name[yid] = cat.get("name", f"class_{yid}")
+
+    imgs_by_id = {img.get("id"): img for img in images}
+    anns_by_img = {img_id: [] for img_id in imgs_by_id.keys()}
+    for ann in annotations:
+        img_id = ann.get("image_id")
+        if img_id in anns_by_img:
+            anns_by_img[img_id].append(ann)
+
+    # Build YOLO label strings per image
+    labels = {}
+    for img_id, img in imgs_by_id.items():
+        W = float(img.get("width", 0) or 0)
+        H = float(img.get("height", 0) or 0)
+        lines = []
+        for ann in anns_by_img.get(img_id, []):
+            bbox = ann.get("bbox") or []
+            if len(bbox) != 4 or W <= 0 or H <= 0:
+                continue
+            x, y, w, h = bbox
+            cx = (x + w / 2.0) / W
+            cy = (y + h / 2.0) / H
+            ww = w / W
+            hh = h / H
+            cid = cat_id_to_yolo.get(ann.get("category_id"))
+            if cid is None or ww <= 0 or hh <= 0:
+                continue
+            lines.append(f"{cid} {cx:.6f} {cy:.6f} {ww:.6f} {hh:.6f}")
+        labels[img_id] = "\n".join(lines) + ("\n" if lines else "")
+
+    # Shuffle/split by image list
+    img_entries = list(imgs_by_id.values())
+    rng = random.Random(seed if seed is not None else time.time())
+    rng.shuffle(img_entries)
+    split_index = int(len(img_entries) * float(train_ratio))
+    splits = {
+        "train": img_entries[:split_index],
+        "val": img_entries[split_index:],
+    }
+
+    img_exts = (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff")
+    copied = {"train": 0, "val": 0}
+    yolo_root = Path(yolo_root_path) if yolo_root_path else coco_root
+    yolo_root.mkdir(parents=True, exist_ok=True)
+    for split_name, imgs in splits.items():
+        dest_img_dir = yolo_root / "images" / split_name
+        dest_lbl_dir = yolo_root / "labels" / split_name
+        dest_img_dir.mkdir(parents=True, exist_ok=True)
+        dest_lbl_dir.mkdir(parents=True, exist_ok=True)
+
+        for img in imgs:
+            file_name = img.get("file_name", "")
+            stem = Path(file_name).stem
+
+            # Locate image file
+            candidates = [
+                coco_root / file_name,
+                coco_root / "images" / file_name,
+                coco_root / "rgb" / file_name,
+                coco_root / "color" / file_name,
+            ]
+            found_img = next((p for p in candidates if p.exists()), None)
+            if found_img is None:
+                # fallback search by basename
+                matches = list(coco_root.rglob(stem + ".*"))
+                matches = [m for m in matches if m.suffix.lower() in img_exts]
+                found_img = matches[0] if matches else None
+
+            if found_img is None:
+                print(f"[YOLO-CONVERT] WARNING: Image not found for {file_name}")
+                continue
+
+            shutil.copy2(found_img, dest_img_dir / found_img.name)
+            lbl_txt = labels.get(img.get("id"), "")
+            with open(dest_lbl_dir / f"{stem}.txt", "w") as f:
+                f.write(lbl_txt)
+            copied[split_name] += 1
+
+    # Write data.yaml with class names
+    data_yaml = yolo_root / "data.yaml"
+    names_lines = "\n".join([f"  {i}: {n}" for i, n in enumerate(yolo_id_to_name)])
+    rel_path = os.path.relpath(yolo_root, start=data_yaml.parent)
+    content = (
+        f"path: {rel_path}\n"
+        f"train: images/train\n"
+        f"val: images/val\n"
+        f"test: images/test\n"
+        f"# Number of classes\n"
+        f"nc: 10\n"
+        f"names:\n{names_lines}\n"
+    )
+    with open(data_yaml, "w") as f:
+        f.write(content)
+
+    print(f"[YOLO-CONVERT] Done. train images: {copied['train']}  val images: {copied['val']}")
+    print(f"[YOLO-CONVERT] YOLO dataset at: {yolo_root}")
 
 
 
@@ -370,26 +527,43 @@ def set_fixed_topdown_camera():
     print(f"[INFO] Fixed camera set at {cam_loc}, rot={cam_rot}")
 
 
-# Add a distant light to the empty stage
-distant_light = stage.DefinePrim("/World/Lights/DistantLight", "DistantLight")
-distant_light.CreateAttribute("inputs:angle", Sdf.ValueTypeNames.Float).Set(7.0)  # try 2–5
-distant_light.CreateAttribute("inputs:intensity", Sdf.ValueTypeNames.Float).Set(5000.0)
+MAIN_LIGHT_INTENSITY_RANGE = (800.0, 1500.0)
+FILL_LIGHT_RATIO_RANGE = (0.3, 0.5)
+FILL_LIGHT_DESAT_RANGE = (0.2, 0.5)
+
+# Add a simple two-light rig (key + fill)
+distant_light = stage.DefinePrim("/World/Lights/KeyLight", "DistantLight")
+distant_light.CreateAttribute("inputs:angle", Sdf.ValueTypeNames.Float).Set(7.0)
+distant_light.CreateAttribute("inputs:intensity", Sdf.ValueTypeNames.Float).Set(1000.0)
 if not distant_light.HasAttribute("xformOp:rotateXYZ"):
     UsdGeom.Xformable(distant_light).AddRotateXYZOp()
 distant_light.GetAttribute("xformOp:rotateXYZ").Set((0, 60, 0))
-# Second distant light – softer "fill sun" from a slightly different direction
-distant_light2 = stage.DefinePrim("/World/Lights/DistantLight2", "DistantLight")
 
-# Base intensity; will be overridden per-frame, but good to have a default
-distant_light2.CreateAttribute("inputs:intensity", Sdf.ValueTypeNames.Float).Set(3000.0)
-
-# Give it its own direction (a bit lower and from another side)
+distant_light2 = stage.DefinePrim("/World/Lights/FillLight", "DistantLight")
+distant_light2.CreateAttribute("inputs:intensity", Sdf.ValueTypeNames.Float).Set(600.0)
 if not distant_light2.HasAttribute("xformOp:rotateXYZ"):
     UsdGeom.Xformable(distant_light2).AddRotateXYZOp()
 distant_light2.GetAttribute("xformOp:rotateXYZ").Set((-15, -30, 0))
-
-# Slightly larger angle -> softer, blurrier shadows
 distant_light2.CreateAttribute("inputs:angle", Sdf.ValueTypeNames.Float).Set(10.0)
+
+
+def apply_frame_lighting():
+    """Minimal per-frame lighting update with key/fill and shared hue."""
+    main_intensity = random.uniform(*MAIN_LIGHT_INTENSITY_RANGE)
+    fill_ratio = random.uniform(*FILL_LIGHT_RATIO_RANGE)
+    desat = random.uniform(*FILL_LIGHT_DESAT_RANGE)
+
+    r, g, b = sample_light_color()
+    color_vec = Gf.Vec3f(r, g, b)
+    distant_light.GetAttribute("inputs:intensity").Set(main_intensity)
+    distant_light.GetAttribute("inputs:color").Set(color_vec)
+
+    rf = r + (1.0 - r) * desat
+    gf = g + (1.0 - g) * desat
+    bf = b + (1.0 - b) * desat
+    fill_color = Gf.Vec3f(rf, gf, bf)
+    distant_light2.GetAttribute("inputs:intensity").Set(main_intensity * fill_ratio)
+    distant_light2.GetAttribute("inputs:color").Set(fill_color)
 
 
 # Get the working area size and bounds (width=x, depth=y, height=z)
@@ -624,11 +798,30 @@ if disable_render_products_between_captures:
 # Create the writer and attach the render products
 writer_type = config.get("writer_type", "PoseWriter")
 writer_kwargs = config.get("writer_kwargs", {})
+yolo_split_ratio = config.get("yolo_split_ratio", 0.8)
+yolo_split_seed = config.get("yolo_split_seed", None)
+yolo_output_dir = config.get("yolo_output_dir")
 if out_dir := writer_kwargs.get("output_dir"):
     if not os.path.isabs(out_dir):
         out_dir = os.path.join(os.getcwd(), out_dir)
         writer_kwargs["output_dir"] = out_dir
     print(f"[SDG] Writing data to: {out_dir}")
+
+# Provide sane defaults for the YOLO writer when enabled
+if writer_type == "YoloWriter":
+    coco_categories = writer_kwargs.get("coco_categories", {})
+    if "class_names" not in writer_kwargs:
+        if isinstance(coco_categories, dict) and coco_categories:
+            sorted_categories = sorted(
+                coco_categories.items(),
+                key=lambda item: item[1].get("id", 0) if isinstance(item[1], dict) else 0,
+            )
+            writer_kwargs["class_names"] = [name for name, _ in sorted_categories]
+        else:
+            writer_kwargs["class_names"] = [obj.get("label", "unknown") for obj in labeled_assets_and_properties]
+    writer_kwargs.setdefault("split_weights", {"train": 0.8, "val": 0.2})
+    writer_kwargs.setdefault("write_data_yaml", True)
+
 if writer_type is not None and len(render_products) > 0:
     writer = rep.writers.get(writer_type)
     writer.initialize(**writer_kwargs)
@@ -670,21 +863,7 @@ with rep.trigger.on_custom_event(event_name="randomize_shape_distractor_colors")
     with shape_distractors_group:
         rep.randomizer.color(colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1)))
 
-# Create a randomizer for lights in the working area
-light_min = (min_x, min_y, OBJECT_Z + CAMERA_DISTANCE_ABOVE_OBJECTS + 1.0)
-light_max = (max_x, max_y, OBJECT_Z + CAMERA_DISTANCE_ABOVE_OBJECTS + 1.0)
-
-with rep.trigger.on_custom_event(event_name="randomize_lights"):
-    lights = rep.create.light(
-        light_type="Sphere",
-        color=rep.distribution.uniform((0.6, 0.6, 0.6), (1.0, 1.0, 1.0)),
-        temperature=rep.distribution.normal(6500, 500),
-        intensity=rep.distribution.normal(12000, 3000),
-        # lights always behind the camera, never intersecting the floor
-        position=rep.distribution.uniform(light_min, light_max),
-        scale=rep.distribution.uniform(0.1, 0.4),
-        count=3,
-    )
+""" Lighting randomizer removed; we use simple key/fill lights updated per frame """
 
 # Create a randomizer for the dome background
 #with rep.trigger.on_custom_event(event_name="randomize_dome_background"):
@@ -744,30 +923,8 @@ for i in range(num_frames):
         floor_refs.ClearReferences()
         floor_refs.AddReference(selected_floor)
     # ------------------------------
-    # ---- Intensities ----
-    main_intensity = random.uniform(600.0, 1500.0)
-    distant_light.GetAttribute("inputs:intensity").Set(main_intensity)
-
-    fill_ratio = random.uniform(0.25, 0.5)
-    fill_intensity = main_intensity * fill_ratio
-    distant_light2.GetAttribute("inputs:intensity").Set(fill_intensity)
-
-    # ---- Colors ----
-    # One overall mood color per frame (for “apple-to-apple” with Blender)
-    r, g, b = sample_light_color()
-    color_vec = Gf.Vec3f(r, g, b)
-
-    # Main sun uses the color
-    distant_light.GetAttribute("inputs:color").Set(color_vec)
-
-    # Fill sun: either same color or slightly washed out
-    desat = random.uniform(0.2, 0.5)
-    rf = r + (1.0 - r) * desat
-    gf = g + (1.0 - g) * desat
-    bf = b + (1.0 - b) * desat
-
-    fill_color = Gf.Vec3f(rf, gf, bf)
-    distant_light2.GetAttribute("inputs:color").Set(fill_color)
+    # ---- Lighting ----
+    apply_frame_lighting()
 
 
     # --------------------------------------------------------
@@ -814,11 +971,6 @@ for i in range(num_frames):
     if floor_material_urls:
         rep.utils.send_og_event(event_name="randomize_floor_material")
 
-    # Randomize lights
-    if i % 5 == 0:
-        print(f"\t Randomizing lights")
-        rep.utils.send_og_event(event_name="randomize_lights")
-
     # Randomize shape distractor colors
     if i % 15 == 0:
         print(f"\t Randomizing shape distractors colors")
@@ -845,6 +997,10 @@ for i in range(num_frames):
 
 # Wait for the data to be written
 rep.orchestrator.wait_until_complete()
+
+# Convert COCO output to YOLO format and split train/val
+if writer_type == "CocoWriter" and out_dir:
+    convert_coco_to_yolo_and_split(out_dir, yolo_output_dir, train_ratio=yolo_split_ratio, seed=yolo_split_seed)
 
 # Stats
 wall_duration = time.perf_counter() - wall_time_start
