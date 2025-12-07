@@ -19,6 +19,7 @@ import os
 
 import yaml
 from isaacsim import SimulationApp
+import re
 
 # Default config dict, can be updated/replaced using json/yaml config files ('--config' cli argument)
 config = {
@@ -77,6 +78,12 @@ config = {
     ],
     "mesh_distractors_scale_min_max": (0.35, 1.35),
     "mesh_distractors_num": 75,
+    "pathtracing": {
+        "enabled": False,
+        "spp": 256,
+        "total_spp": 256,
+        "denoiser": True,
+    },
 }
 
 import carb
@@ -108,9 +115,10 @@ simulation_app = SimulationApp(launch_config=launch_config)
 import random
 import time
 from itertools import chain
-import math
 
 import carb.settings
+import numpy as np
+import re
 
 # Custom util functions for the example
 import object_based_sdg_utils
@@ -118,14 +126,28 @@ import omni.replicator.core as rep
 import omni.timeline
 import omni.usd
 import usdrt
+from isaacsim.core.api.objects.ground_plane import GroundPlane
 from isaacsim.core.utils.semantics import add_labels, remove_labels, upgrade_prim_semantics_to_labels
 from isaacsim.storage.native import get_assets_root_path
-from omni.physx import get_physx_interface, get_physx_scene_query_interface
 from pxr import PhysxSchema, Sdf, UsdGeom, UsdPhysics
+from pxr import UsdShade
 
 # Isaac nucleus assets root path
 assets_root_path = get_assets_root_path()
 stage = None
+
+# Global RTX shadow softness (helps avoid razor-sharp shadows)
+settings = carb.settings.get_settings()
+settings.set("/rtx/shadows/softShadows", True)
+settings.set("/rtx/shadows/sunArea", 1.0)   
+pt_cfg = config.get("pathtracing", {})
+if pt_cfg.get("enabled"):
+    settings.set("/rtx/rendermode", "PathTracing")
+    settings.set("/rtx/pathtracing/spp", pt_cfg.get("spp", 256))
+    settings.set("/rtx/pathtracing/totalSpp", pt_cfg.get("total_spp", pt_cfg.get("spp", 256)))
+    settings.set("/rtx/pathtracing/optixDenoiser/enabled", 1 if pt_cfg.get("denoiser", True) else 0)
+else:
+    settings.set("/rtx/rendermode", "RaytracedLighting")
 
 # ENVIRONMENT
 env_url = config.get("env_url", "")
@@ -141,6 +163,18 @@ else:
 # -------------------------------------------------------
 
 CAMERA_DISTANCE_ABOVE_OBJECTS = 6.0   # tweak this
+
+# Centralized light tweakables
+LIGHT_SETTINGS = {
+    "distant_intensity": 4000,
+    "random_light_color_min": (0.0, 0.0, 0.0),
+    "random_light_color_max": (1.0, 1.0, 1.0),
+    "random_light_temperature_mean": 650,
+    "random_light_temperature_std": 5000,
+    "random_light_intensity_mean": 2000,
+    "random_light_intensity_std": 1000,
+    "random_light_count": 1,
+}
 
 def set_fixed_topdown_camera():
     cam_path = "/World/Cameras/cam_0"
@@ -168,7 +202,9 @@ def set_fixed_topdown_camera():
 
 # Add a distant light to the empty stage
 distant_light = stage.DefinePrim("/World/Lights/DistantLight", "DistantLight")
-distant_light.CreateAttribute("inputs:intensity", Sdf.ValueTypeNames.Float).Set(400.0)
+distant_light.CreateAttribute("inputs:intensity", Sdf.ValueTypeNames.Float).Set(LIGHT_SETTINGS["distant_intensity"])
+# Increase angular size to soften shadows
+distant_light.CreateAttribute("inputs:angle", Sdf.ValueTypeNames.Float).Set(0.5)
 if not distant_light.HasAttribute("xformOp:rotateXYZ"):
     UsdGeom.Xformable(distant_light).AddRotateXYZOp()
 distant_light.GetAttribute("xformOp:rotateXYZ").Set((0, 60, 0))
@@ -198,6 +234,50 @@ spawn_max_z = floor_height + 1.50
 working_area_min = (min_x, min_y, spawn_min_z)
 working_area_max = (max_x, max_y, spawn_max_z)
 
+def build_mdl_material_library(stage, mdl_entries):
+    """
+    Given a list of dicts:
+        [{ "mdl_url": "...", "subidentifier": "..." }, ...]
+    create UsdShade.Materials under /World/Looks and return them.
+    """
+    if not mdl_entries:
+        return []
+
+    stage.DefinePrim("/World/Looks", "Scope")
+    materials = []
+    for idx, entry in enumerate(mdl_entries):
+        mdl_url = entry.get("mdl_url")
+        subid = entry.get("subidentifier")
+        if not mdl_url:
+            continue
+        if not subid:
+            subid = mdl_url.split("/")[-1].replace(".mdl", "")
+
+        mtl_path = Sdf.Path(f"/World/Looks/AssetMat_{idx}")
+        mtl = UsdShade.Material.Define(stage, mtl_path)
+        shader = UsdShade.Shader.Define(stage, mtl_path.AppendPath("Shader"))
+        shader.CreateImplementationSourceAttr(UsdShade.Tokens.sourceAsset)
+        shader.SetSourceAsset(mdl_url, "mdl")
+        shader.SetSourceAssetSubIdentifier(subid, "mdl")
+
+        surf_out = mtl.CreateSurfaceOutput("mdl")
+        surf_out.ConnectToSource(shader.ConnectableAPI(), "out")
+        disp_out = mtl.CreateDisplacementOutput("mdl")
+        disp_out.ConnectToSource(shader.ConnectableAPI(), "out")
+        vol_out = mtl.CreateVolumeOutput("mdl")
+        vol_out.ConnectToSource(shader.ConnectableAPI(), "out")
+        materials.append(mtl)
+    return materials
+
+
+def randomize_asset_materials(prims, materials):
+    """Randomly bind one of the given materials to each prim in 'prims'."""
+    if not materials:
+        return
+    for prim in prims:
+        mat = random.choice(materials)
+        UsdShade.MaterialBindingAPI(prim).Bind(mat)
+
 
 # Create a collision box area around the assets to prevent them from drifting away
 object_based_sdg_utils.create_collision_box_walls(
@@ -205,17 +285,18 @@ object_based_sdg_utils.create_collision_box_walls(
 )
 
 # ---- FLOOR PLANE -------------------------------------------------
-# We put a flat cube at the bottom of the working area to act as a floor
+# Use a physics-enabled ground plane instead of a flattened cube
 floor_height = -working_area_size[2] / 2.0  # bottom of the collision box
-
-floor_prim = UsdGeom.Cube.Define(stage, "/World/Floor")
-xform = UsdGeom.Xformable(floor_prim)
-
-# Scale the cube to cover the whole working area (very thin in Z)
-xform.AddScaleOp().Set((working_area_size[0], working_area_size[1], 0.05))
-
-# Move it so its top is roughly at floor_height (slightly below objects)
-xform.AddTranslateOp().Set((0.0, 0.0, floor_height - 0.025))
+ground_plane_size = max(working_area_size[0], working_area_size[1])
+ground_plane = GroundPlane(
+    prim_path="/World/groundPlane",
+    size=ground_plane_size,
+    color=np.array([0.5, 0.5, 0.5]),
+)
+# Align the ground plane with the bottom of the working area so falling assets land on it
+object_based_sdg_utils.set_transform_attributes(
+    stage.GetPrimAtPath("/World/groundPlane"), location=(0.0, 0.0, floor_height)
+)
 # ------------------------------------------------------------------
 
 
@@ -232,70 +313,91 @@ physx_scene.GetTimeStepsPerSecondAttr().Set(60)
 
 
 # TRAINING ASSETS
-# Add the objects to be trained in the environment with their labels and properties
 labeled_assets_and_properties = config.get("labeled_assets_and_properties", [])
-floating_labeled_prims = []
-falling_labeled_prims = []
 labeled_prims = []
+drop_height_min = floor_height + 0.5
+drop_height_max = floor_height + working_area_size[2] * 0.8
+mesh_distractors = []
 
-# --- build a grid of slots across the working area ---
-total_labeled = sum(obj.get("count", 1) for obj in labeled_assets_and_properties)
 
-if total_labeled > 0:
-    # roughly square grid
-    grid_cols = math.ceil(math.sqrt(total_labeled))
-    grid_rows = math.ceil(total_labeled / grid_cols)
+def clear_labeled_assets():
+    """Remove existing labeled assets from the stage."""
+    global labeled_prims
+    if stage.GetPrimAtPath("/World/Labeled").IsValid():
+        stage.RemovePrim("/World/Labeled")
+    stage.DefinePrim("/World/Labeled", "Xform")
+    labeled_prims = []
 
-    min_x, min_y, min_z = working_area_min
-    max_x, max_y, max_z = working_area_max
 
-    step_x = (max_x - min_x) / grid_cols
-    step_y = (max_y - min_y) / grid_rows
+def spawn_labeled_assets(max_label_types=None):
+    """Spawn labeled assets at random XY and height, enable physics, and prepare to drop.
+    Optionally limit to a subset of label types (random choice).
+    """
+    global labeled_prims
+    clear_labeled_assets()
+    spawned = []
+    # Choose which label types to spawn this frame
+    if max_label_types is not None:
+        chosen_objs = random.sample(
+            labeled_assets_and_properties, k=min(max_label_types, len(labeled_assets_and_properties))
+        )
+    else:
+        chosen_objs = labeled_assets_and_properties
 
-    slot_idx = 0
-
-    for obj in labeled_assets_and_properties:
+    for obj in chosen_objs:
         obj_url = obj.get("url", "")
         label = obj.get("label", "unknown")
         count = obj.get("count", 1)
-        floating = obj.get("floating", False)
-        scale_min_max = obj.get("scale_min_max", (1, 1))
-
         for _ in range(count):
-            # pick a grid cell
-            row = slot_idx // grid_cols
-            col = slot_idx % grid_cols
-            slot_idx += 1
-
-            base_x = min_x + (col + 0.5) * step_x
-            base_y = min_y + (row + 0.5) * step_y
-
-            # small random jitter so it doesn't look like a perfect chessboard
-            jitter_x = random.uniform(-0.3, 0.3) * step_x
-            jitter_y = random.uniform(-0.3, 0.3) * step_y
-
-            # use helper to get rotation + scale, but override x/y
-            rand_loc, rand_rot, rand_scale = object_based_sdg_utils.get_random_transform_values(
-                loc_min=working_area_min, loc_max=working_area_max, scale_min_max=scale_min_max
+            rand_loc, rand_rot, _ = object_based_sdg_utils.get_random_transform_values(
+                loc_min=(min_x, min_y, drop_height_min),
+                loc_max=(max_x, max_y, drop_height_max),
+                scale_min_max=(1, 1),  # keep authored scale
             )
-            rand_loc = (base_x + jitter_x, base_y + jitter_y, OBJECT_Z)
-
-            # create prim
             prim_path = omni.usd.get_stage_next_free_path(stage, f"/World/Labeled/{label}", False)
             prim = stage.DefinePrim(prim_path, "Xform")
             asset_path = obj_url if obj_url.startswith("omniverse://") else assets_root_path + obj_url
             prim.GetReferences().AddReference(asset_path)
-            object_based_sdg_utils.set_transform_attributes(prim, location=rand_loc, rotation=rand_rot, scale=rand_scale)
+            object_based_sdg_utils.set_transform_attributes(prim, location=rand_loc, rotation=rand_rot)
             object_based_sdg_utils.add_colliders(prim)
-            object_based_sdg_utils.add_rigid_body_dynamics(prim, disable_gravity=floating)
+            object_based_sdg_utils.add_rigid_body_dynamics(prim, disable_gravity=False)
             add_labels(prim, labels=[label], instance_name="class")
+            # zero velocities
+            if prim.HasAttribute("physics:velocity"):
+                prim.GetAttribute("physics:velocity").Set((0.0, 0.0, 0.0))
+            if prim.HasAttribute("physics:angularVelocity"):
+                prim.GetAttribute("physics:angularVelocity").Set((0.0, 0.0, 0.0))
+            spawned.append(prim)
+    labeled_prims = spawned
+    return spawned
 
-            if floating:
-                floating_labeled_prims.append(prim)
-            else:
-                falling_labeled_prims.append(prim)
 
-labeled_prims = floating_labeled_prims + falling_labeled_prims
+def wait_for_labeled_assets_to_settle(timeline, max_duration=3.0, lin_thresh=0.02, ang_thresh=1.0):
+    """Simulate until labeled assets rest on the ground plane or timeout."""
+    if not labeled_prims and not mesh_distractors:
+        return
+    if not timeline.is_playing():
+        timeline.play()
+    elapsed = 0.0
+    previous_time = timeline.get_current_time()
+    while elapsed < max_duration:
+        simulation_app.update()
+        all_settled = True
+        for prim in labeled_prims + mesh_distractors:
+            lin_vel = prim.GetAttribute("physics:velocity").Get() if prim.HasAttribute("physics:velocity") else (0, 0, 0)
+            ang_vel = (
+                prim.GetAttribute("physics:angularVelocity").Get()
+                if prim.HasAttribute("physics:angularVelocity")
+                else (0, 0, 0)
+            )
+            if any(abs(v) > lin_thresh for v in lin_vel) or any(abs(v) > ang_thresh for v in ang_vel):
+                all_settled = False
+                break
+        current_time = timeline.get_current_time()
+        elapsed += current_time - previous_time
+        previous_time = current_time
+        if all_settled:
+            break
 
 
 
@@ -328,33 +430,51 @@ for i in range(shape_distractors_num):
 # Add mesh distractors to the environment as floating of falling objects
 mesh_distactors_urls = config.get("mesh_distractors_urls", [])
 mesh_distactors_scale_min_max = config.get("mesh_distractors_scale_min_max", (0.1, 2.0))
-mesh_distactors_num = config.get("mesh_distractors_num", 10)
+mesh_distactors_num = config.get("mesh_distactors_num", 20)
 mesh_distractors = []
-floating_mesh_distractors = []
-falling_mesh_distractors = []
-for i in range(mesh_distactors_num):
-    rand_loc, rand_rot, rand_scale = object_based_sdg_utils.get_random_transform_values(
-        loc_min=working_area_min, loc_max=working_area_max, scale_min_max=mesh_distactors_scale_min_max
-    )
-    rand_loc = (rand_loc[0], rand_loc[1], OBJECT_Z)
-    mesh_url = random.choice(mesh_distactors_urls)
-    prim_name = os.path.basename(mesh_url).split(".")[0]
-    prim_path = omni.usd.get_stage_next_free_path(stage, f"/World/Distractors/{prim_name}", False)
-    prim = stage.DefinePrim(prim_path, "Xform")
-    asset_path = mesh_url if mesh_url.startswith("omniverse://") else assets_root_path + mesh_url
-    prim.GetReferences().AddReference(asset_path)
-    object_based_sdg_utils.set_transform_attributes(prim, location=rand_loc, rotation=rand_rot, scale=rand_scale)
-    object_based_sdg_utils.add_colliders(prim)
-    disable_gravity = random.choice([True, False])
-    object_based_sdg_utils.add_rigid_body_dynamics(prim, disable_gravity=disable_gravity)
-    if disable_gravity:
-        floating_mesh_distractors.append(prim)
-    else:
-        falling_mesh_distractors.append(prim)
-    mesh_distractors.append(prim)
-    # Remove any previous semantics on the mesh distractor
-    upgrade_prim_semantics_to_labels(prim, include_descendants=True)
-    remove_labels(prim, include_descendants=True)
+
+
+def clear_mesh_distractors():
+    """Remove existing mesh distractors from the stage."""
+    global mesh_distractors
+    for prim in mesh_distractors:
+        stage.RemovePrim(prim.GetPath())
+    if stage.GetPrimAtPath("/World/Distractors/Mesh").IsValid():
+        stage.RemovePrim("/World/Distractors/Mesh")
+    stage.DefinePrim("/World/Distractors/Mesh", "Xform")
+    mesh_distractors = []
+
+
+def spawn_mesh_distractors():
+    """Spawn mesh distractors at random XY/height with physics enabled, similar to labeled assets."""
+    global mesh_distractors
+    clear_mesh_distractors()
+    for i in range(mesh_distactors_num):
+        rand_loc, rand_rot, rand_scale = object_based_sdg_utils.get_random_transform_values(
+            loc_min=(min_x, min_y, drop_height_min),
+            loc_max=(max_x, max_y, drop_height_max),
+            scale_min_max=mesh_distactors_scale_min_max,
+        )
+        mesh_url = random.choice(mesh_distactors_urls)
+        prim_name_raw = os.path.basename(mesh_url).split(".")[0]
+        prim_name = re.sub(r"[^A-Za-z0-9_]", "_", prim_name_raw)
+        if not prim_name or not (prim_name[0].isalpha() or prim_name[0] == "_"):
+            prim_name = f"mesh_{prim_name}"
+        prim_path = omni.usd.get_stage_next_free_path(stage, f"/World/Distractors/Mesh/{prim_name}", False)
+        prim = stage.DefinePrim(prim_path, "Xform")
+        asset_path = mesh_url if mesh_url.startswith("omniverse://") else assets_root_path + mesh_url
+        prim.GetReferences().AddReference(asset_path)
+        object_based_sdg_utils.set_transform_attributes(prim, location=rand_loc, rotation=rand_rot, scale=rand_scale)
+        object_based_sdg_utils.add_colliders(prim)
+        object_based_sdg_utils.add_rigid_body_dynamics(prim, disable_gravity=False)
+        # zero velocities
+        if prim.HasAttribute("physics:velocity"):
+            prim.GetAttribute("physics:velocity").Set((0.0, 0.0, 0.0))
+        if prim.HasAttribute("physics:angularVelocity"):
+            prim.GetAttribute("physics:angularVelocity").Set((0.0, 0.0, 0.0))
+        mesh_distractors.append(prim)
+        upgrade_prim_semantics_to_labels(prim, include_descendants=True)
+        remove_labels(prim, include_descendants=True)
 
 # REPLICATOR
 # Disable capturing every frame (capture will be triggered manually using the step function)
@@ -418,60 +538,6 @@ if writer_type is not None and len(render_products) > 0:
     writer.attach(render_products)
 
 
-# RANDOMIZERS
-# Apply a random (mostly) uppwards velocity to the objects overlapping the 'bounce' area
-def on_overlap_hit(hit):
-    prim = stage.GetPrimAtPath(hit.rigid_body)
-    # Skip the camera collision spheres
-    if prim not in camera_colliders:
-        rand_vel = (random.uniform(-2, 2), random.uniform(-2, 2), random.uniform(4, 8))
-        prim.GetAttribute("physics:velocity").Set(rand_vel)
-    return True  # return True to continue the query
-
-
-# Area to check for overlapping objects (above the bottom collision box)
-overlap_area_thickness = 0.1
-overlap_area_origin = (0, 0, (-working_area_size[2] / 2) + (overlap_area_thickness / 2))
-overlap_area_extent = (
-    working_area_size[0] / 2 * 0.99,
-    working_area_size[1] / 2 * 0.99,
-    overlap_area_thickness / 2 * 0.99,
-)
-
-
-# Triggered every physics update step to check for overlapping objects
-def on_physics_step(dt: float):
-    hit_info = get_physx_scene_query_interface().overlap_box(
-        carb.Float3(overlap_area_extent),
-        carb.Float3(overlap_area_origin),
-        carb.Float4(0, 0, 0, 1),
-        on_overlap_hit,
-        False,  # pass 'False' to indicate an 'overlap multiple' query.
-    )
-
-
-# Subscribe to the physics step events to check for objects overlapping the 'bounce' area
-physx_sub = get_physx_interface().subscribe_physics_step_events(on_physics_step)
-
-
-# Pull assets towards the working area center by applying a random velocity towards the given target
-def apply_velocities_towards_target(assets, target=(0, 0, 0)):
-    for prim in assets:
-        loc = prim.GetAttribute("xformOp:translate").Get()
-        strength = random.uniform(0.1, 1.0)
-        pull_vel = ((target[0] - loc[0]) * strength, (target[1] - loc[1]) * strength, (target[2] - loc[2]) * strength)
-        prim.GetAttribute("physics:velocity").Set(pull_vel)
-
-
-# Apply random velocities to assets
-def randomize_floating_distractor_velocities(assets):
-    for prim in assets:
-        lin_vel = (random.uniform(-2.5, 2.5), random.uniform(-2.5, 2.5), random.uniform(-2.5, 2.5))
-        ang_vel = (random.uniform(-45, 45), random.uniform(-45, 45), random.uniform(-45, 45))
-        prim.GetAttribute("physics:velocity").Set(lin_vel)
-        prim.GetAttribute("physics:angularVelocity").Set(ang_vel)
-
-
 # Randomize camera poses to look at a random target asset (random distance and center offset)
 camera_distance_to_target_min_max = config.get("camera_distance_to_target_min_max", (0.1, 0.5))
 camera_look_at_target_offset = config.get("camera_look_at_target_offset", 0.2)
@@ -521,12 +587,17 @@ with rep.trigger.on_custom_event(event_name="randomize_shape_distractor_colors")
 with rep.trigger.on_custom_event(event_name="randomize_lights"):
     lights = rep.create.light(
         light_type="Sphere",
-        color=rep.distribution.uniform((0, 0, 0), (1, 1, 1)),
-        temperature=rep.distribution.normal(6500, 500),
-        intensity=rep.distribution.normal(35000, 5000),
+        color=rep.distribution.uniform(LIGHT_SETTINGS["random_light_color_min"], LIGHT_SETTINGS["random_light_color_max"]),
+        temperature=rep.distribution.normal(
+            LIGHT_SETTINGS["random_light_temperature_mean"], LIGHT_SETTINGS["random_light_temperature_std"]
+        ),
+        intensity=rep.distribution.normal(
+            LIGHT_SETTINGS["random_light_intensity_mean"], LIGHT_SETTINGS["random_light_intensity_std"]
+        ),
         position=rep.distribution.uniform(working_area_min, working_area_max),
-        scale=rep.distribution.uniform(0.1, 1),
-        count=3,
+        # larger lights → softer shadows
+        scale=rep.distribution.uniform(0.3, 1.5),
+        count=LIGHT_SETTINGS["random_light_count"],
     )
 
 
@@ -585,27 +656,6 @@ def capture_with_motion_blur_and_pathtracing(duration=0.05, num_samples=8, spp=6
     carb.settings.get_settings().set("/rtx/rendermode", prev_render_mode)
 
 
-# Update the app until a given simulation duration has passed (simulate the world between captures)
-def run_simulation_loop(duration):
-    timeline = omni.timeline.get_timeline_interface()
-    elapsed_time = 0.0
-    previous_time = timeline.get_current_time()
-    if not timeline.is_playing():
-        timeline.play()
-    app_updates_counter = 0
-    while elapsed_time <= duration:
-        simulation_app.update()
-        elapsed_time += timeline.get_current_time() - previous_time
-        previous_time = timeline.get_current_time()
-        app_updates_counter += 1
-        print(
-            f"\t Simulation loop at {timeline.get_current_time():.2f}, current elapsed time: {elapsed_time:.2f}, counter: {app_updates_counter}"
-        )
-    print(
-        f"[SDG] Simulation loop finished in {elapsed_time:.2f} seconds at {timeline.get_current_time():.2f} with {app_updates_counter} app updates."
-    )
-
-
 # SDG
 # Number of frames to capture
 num_frames = config.get("num_frames", 10)
@@ -614,14 +664,15 @@ num_frames = config.get("num_frames", 10)
 # see: https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/subframes_examples.html
 rt_subframes = config.get("rt_subframes", -1)
 
-# Amount of simulation time to wait between captures
-sim_duration_between_captures = config.get("simulation_duration_between_captures", 0.025)
-
 # Initial trigger for randomizers before the SDG loop with several app updates (ensures materials/textures are loaded)
 rep.utils.send_og_event(event_name="randomize_shape_distractor_colors")
 rep.utils.send_og_event(event_name="randomize_dome_background")
 for _ in range(5):
     simulation_app.update()
+
+# Build MDL materials from config for per-frame asset material randomization
+asset_mdl_entries = config.get("asset_mdl_materials", [])
+asset_mdl_materials = build_mdl_material_library(stage, asset_mdl_entries)
 
 # Set the timeline parameters (start, end, no looping) and start the timeline
 timeline = omni.timeline.get_timeline_interface()
@@ -640,17 +691,14 @@ wall_time_start = time.perf_counter()
 set_fixed_topdown_camera()
 # Run the simulation and capture data triggering randomizations and actions at custom frame intervals
 for i in range(num_frames):
-    # Cameras will be moved to a random position and look at a randomly selected labeled asset
-    #print(f"\t Randomizing camera poses")
-    #randomize_camera_poses()
-    # Temporarily enable camera colliders and simulate for a few frames to push out any overlapping objects
-    #if camera_colliders:
-    #    simulate_camera_collision(num_frames=4)
-
-    # Apply a random velocity towards the origin to the working area to pull the assets closer to the center
-    #if i % 10 == 0:
-    #    print(f"\t Applying velocity towards the origin")
-    #    apply_velocities_towards_target(chain(labeled_prims, shape_distractors, mesh_distractors))
+    print(f"[SDG] Spawning and dropping labeled assets for frame {i}")
+    # For roughly half of the frames, limit to at most 5 label types; otherwise spawn all
+    max_label_types = 5 if i < (num_frames // 2) else None
+    spawn_labeled_assets(max_label_types=max_label_types)
+    spawn_mesh_distractors()
+    # Randomize MDL materials on labeled assets every frame
+    randomize_asset_materials(labeled_prims, asset_mdl_materials)
+    wait_for_labeled_assets_to_settle(timeline)
 
     # Randomize lights locations and colors
     if i % 5 == 0:
@@ -667,11 +715,6 @@ for i in range(num_frames):
         print(f"\t Randomizing dome background")
         rep.utils.send_og_event(event_name="randomize_dome_background")
 
-    # Apply a random velocity on the floating distractors (shapes and meshes)
-    if i % 17 == 0:
-        print(f"\t Randomizing shape distractors velocities")
-        randomize_floating_distractor_velocities(chain(floating_shape_distractors, floating_mesh_distractors))
-
     # Enable render products only at capture time
     if disable_render_products_between_captures:
         object_based_sdg_utils.set_render_products_updates(render_products, True, include_viewport=False)
@@ -687,12 +730,6 @@ for i in range(num_frames):
     if disable_render_products_between_captures:
         object_based_sdg_utils.set_render_products_updates(render_products, False, include_viewport=False)
 
-    # Run the simulation for a given duration between frame captures
-    if sim_duration_between_captures > 0:
-        run_simulation_loop(duration=sim_duration_between_captures)
-    else:
-        simulation_app.update()
-
 # Wait for the data to be written (default writer backends are asynchronous)
 rep.orchestrator.wait_until_complete()
 
@@ -705,14 +742,10 @@ avg_capture_fps = num_captures / wall_duration
 print(
     f"[SDG] Captured {num_frames} frames, {num_captures} entries (frames * cameras) in {wall_duration:.2f} seconds.\n"
     f"\t Simulation duration: {sim_duration:.2f}\n"
-    f"\t Simulation duration between captures: {sim_duration_between_captures:.2f}\n"
     f"\t Average frame FPS: {avg_frame_fps:.2f}\n"
     f"\t Average capture entries (frames * cameras) FPS: {avg_capture_fps:.2f}\n"
 )
 
-# Unsubscribe the physics overlap checks and stop the timeline
-physx_sub.unsubscribe()
-physx_sub = None
 simulation_app.update()
 timeline.stop()
 
