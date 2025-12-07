@@ -3,96 +3,96 @@ launch_config:
   headless: false
 env_url: ''
 working_area_size:
-- 3
-- 3
+- 5
+- 5
 - 1
-rt_subframes: 4
+rt_subframes: 50
 num_frames: 10
 num_cameras: 1
 disable_render_products_between_captures: false
 simulation_duration_between_captures: 0.15
 resolution:
-- 640
-- 640
+- 720
+- 720
 camera_look_at_target_offset: 0.10
 camera_distance_to_target_min_max:
   - 5.00
   - 10.00
 labeled_assets_and_properties:
-- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_Angle.usd"
+- url: "omniverse://localhost/Library/Datasets/SM_Angle.usd"
   label: "sm_angle"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
-- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_ballstem.usd"
+- url: "omniverse://localhost/Library/Datasets/SM_ballstem.usd"
   label: "sm_ballstem"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_Bilincs_Bilincs_003.usd"
+- url: "omniverse://localhost/Library/Datasets/SM_Bilincs_Bilincs_003.usd"
   label: "sm_bilincs_bilincs_003"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_body.usd"
+- url: "omniverse://localhost/Library/Datasets/SM_body.usd"
   label: "sm_body"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_bonnet.usd"
+- url: "omniverse://localhost/Library/Datasets/SM_Bonnet.usd"
   label: "sm_bonnet"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_Erveg2.usd"
+- url: "omniverse://localhost/Library/Datasets/SM_Erveg2.usd"
   label: "sm_erveg2"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_handle.usd"
+- url: "omniverse://localhost/Library/Datasets/SM_handle.usd"
   label: "sm_handle"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_Pipe_Clamp_25.usd"
+- url: "omniverse://localhost/Library/Datasets/SM_Pipe_Clamp_25.usd"
   label: "sm_pipe_clamp_25"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_Rightangle2.usd"
+- url: "omniverse://localhost/Library/Datasets/SM_Rightangle2.usd"
   label: "sm_rightangle2"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Horvath etalv Datasets/SM_seat.usd"
+- url: "omniverse://localhost/Library/Datasets/SM_seat.usd"
   label: "sm_seat"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
@@ -100,7 +100,7 @@ labeled_assets_and_properties:
 
 writer_type: CocoWriter
 writer_kwargs:
-  output_dir: "_out_coco_physX"
+  output_dir: "coco_physX"
   image_output_format: "jpg"
   semantic_types: ["class"]
   coco_categories:
@@ -181,22 +181,57 @@ shape_distractors_scale_min_max:
   - 0.15
 shape_distractors_num: 10
 mesh_distractors_urls:
-- /Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxD_04_1847.usd
-- /Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_01_414.usd
-- /Isaac/Environments/Simple_Warehouse/Props/S_TrafficCone.usd
-- /Isaac/Environments/Simple_Warehouse/Props/S_WetFloorSign.usd
-- /Isaac/Environments/Simple_Warehouse/Props/SM_BarelPlastic_B_03.usd
-- /Isaac/Environments/Office/Props/SM_Board.usd
-- /Isaac/Environments/Office/Props/SM_Book_03.usd
-- /Isaac/Environments/Office/Props/SM_Book_34.usd
-- /Isaac/Environments/Office/Props/SM_BookOpen_01.usd
-- /Isaac/Environments/Office/Props/SM_Briefcase.usd
-- /Isaac/Environments/Office/Props/SM_Extinguisher.usd
-- /Isaac/Environments/Hospital/Props/SM_GasCart_01b.usd
-- /Isaac/Environments/Hospital/Props/SM_MedicalBag_01a.usd
-- /Isaac/Environments/Hospital/Props/SM_MedicalBox_01g.usd
-- /Isaac/Environments/Hospital/Props/SM_Toweldispenser_01a.usd
+- omniverse://localhost/Library/Distractors/0.usdc
+- omniverse://localhost/Library/Distractors/1.usdc
+- omniverse://localhost/Library/Distractors/2.usdc
+- omniverse://localhost/Library/Distractors/3.usdc
+- omniverse://localhost/Library/Distractors/6.usdc
+- omniverse://localhost/Library/Distractors/7.usdc
+- omniverse://localhost/Library/Distractors/8.usdc
+- omniverse://localhost/Library/Distractors/9.usdc
 mesh_distractors_scale_min_max:
   - 0.35
   - 1.35
-mesh_distractors_num: 0
+mesh_distractors_num: 20
+
+floor_mdl_materials:
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Masonry/Facade_Brick_Red_Clinker.mdl"
+    subidentifier: "Facade_Brick_Red_Clinker" 
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Mesh/Metal_Mesh_Weave_03.mdl"
+    subidentifier: "Metal_Mesh_Weave_03"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Mesh/Metal_Mesh_Weave_02.mdl"
+    subidentifier: "Metal_Mesh_Weave_02"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Mesh/Metal_Mesh_Weave_01.mdl"
+    subidentifier: "Metal_Mesh_Weave_01"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Aluminum_Knurling.mdl"
+    subidentifier: "Aluminum_Knurling"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Copper_Knurling.mdl"
+    subidentifier: "Copper_Knurling"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Plaster/Facade_Plaster_Rough.mdl"
+    subidentifier: "Facade_Plaster_Rough"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Plaster/Mosaic_Multi_Color_Stone.mdl"
+    subidentifier: "Mosaic_Multi_Color_Stone"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paper/Cardboard.mdl"
+    subidentifier: "Cardboard"
+
+asset_mdl_materials:
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Copper_Brushed.mdl"
+    subidentifier: "Copper_Brushed"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Metal_Cast.mdl"
+    subidentifier: "Metal_Cast"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Aluminum_Anodized.mdl"
+    subidentifier: "Aluminum_Anodized"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Chromium_Brushed.mdl"
+    subidentifier: "Chromium_Brushed"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Steel_Painted.mdl"
+    subidentifier: "Steel_Painted"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Chalk_Paint_Pebbles.mdl"
+    subidentifier: "Chalk_Paint_Pebbles"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Leather/Suede_Leather.mdl"
+    subidentifier: "Suede_Leather"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Plaster/Stucco.mdl"
+    subidentifier: "Stucco"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Copper_Antique_Brushed_Patinated.mdl"
+    subidentifier: "Copper_Antique_Brushed_Patinated"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Wood/Laminate_Oak.mdl"
+    subidentifier: "Laminate_Oak"
