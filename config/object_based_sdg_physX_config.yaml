@@ -170,6 +170,9 @@ writer_kwargs:
       supercategory: "part"
       isthing: 1
       color: [192, 64, 64]
+yolo_split_ratio: 0.8
+yolo_split_seed: null
+yolo_output_dir: "yolo_out"
 shape_distractors_types:
 - capsule
 - cone
@@ -192,7 +195,7 @@ mesh_distractors_urls:
 mesh_distractors_scale_min_max:
   - 0.35
   - 1.35
-mesh_distractors_num: 20
+mesh_distractors_num: 30
 
 floor_mdl_materials:
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Masonry/Facade_Brick_Red_Clinker.mdl"
@@ -217,21 +220,21 @@ floor_mdl_materials:
 asset_mdl_materials:
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Copper_Brushed.mdl"
     subidentifier: "Copper_Brushed"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Metal_Cast.mdl"
-    subidentifier: "Metal_Cast"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Composite/Carbon_Fiber.mdl"
+    subidentifier: "Carbon_Fiber"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Aluminum_Anodized.mdl"
     subidentifier: "Aluminum_Anodized"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Chromium_Brushed.mdl"
-    subidentifier: "Chromium_Brushed"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Carpaint/Carpaint_Candy.mdl"
+    subidentifier: "Carpaint_Candy"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Steel_Painted.mdl"
     subidentifier: "Steel_Painted"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Chalk_Paint_Pebbles.mdl"
     subidentifier: "Chalk_Paint_Pebbles"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Leather/Suede_Leather.mdl"
-    subidentifier: "Suede_Leather"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Plaster/Stucco.mdl"
-    subidentifier: "Stucco"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Copper_Antique_Brushed_Patinated.mdl"
-    subidentifier: "Copper_Antique_Brushed_Patinated"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Wood/Laminate_Oak.mdl"
-    subidentifier: "Laminate_Oak"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Carpaint/Effect_Pigment_Metallic.mdl"
+    subidentifier: "Effect_Pigment_Metallic"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Carpaint/Carpaint_Metallic.mdl"
+    subidentifier: "Carpaint_Metallic"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Chromium.mdl"
+    subidentifier: "Chromium"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Aluminum_Knurling.mdl"
+    subidentifier: "Aluminum_Knurling"

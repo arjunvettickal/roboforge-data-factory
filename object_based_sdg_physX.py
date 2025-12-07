@@ -16,6 +16,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 
 import yaml
 from isaacsim import SimulationApp
@@ -78,6 +79,9 @@ config = {
     ],
     "mesh_distractors_scale_min_max": (0.35, 1.35),
     "mesh_distractors_num": 75,
+    "yolo_output_dir": "_out_yolo",
+    "yolo_split_ratio": 0.8,
+    "yolo_split_seed": 42,
     "pathtracing": {
         "enabled": False,
         "spp": 256,
@@ -129,7 +133,7 @@ import usdrt
 from isaacsim.core.api.objects.ground_plane import GroundPlane
 from isaacsim.core.utils.semantics import add_labels, remove_labels, upgrade_prim_semantics_to_labels
 from isaacsim.storage.native import get_assets_root_path
-from pxr import PhysxSchema, Sdf, UsdGeom, UsdPhysics
+from pxr import PhysxSchema, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics
 from pxr import UsdShade
 
 # Isaac nucleus assets root path
@@ -139,7 +143,7 @@ stage = None
 # Global RTX shadow softness (helps avoid razor-sharp shadows)
 settings = carb.settings.get_settings()
 settings.set("/rtx/shadows/softShadows", True)
-settings.set("/rtx/shadows/sunArea", 1.0)   
+settings.set("/rtx/shadows/sunArea", 0.01)   
 pt_cfg = config.get("pathtracing", {})
 if pt_cfg.get("enabled"):
     settings.set("/rtx/rendermode", "PathTracing")
@@ -170,10 +174,10 @@ LIGHT_SETTINGS = {
     "random_light_color_min": (0.0, 0.0, 0.0),
     "random_light_color_max": (1.0, 1.0, 1.0),
     "random_light_temperature_mean": 650,
-    "random_light_temperature_std": 5000,
-    "random_light_intensity_mean": 2000,
+    "random_light_temperature_std": 500,
+    "random_light_intensity_mean": 1000,
     "random_light_intensity_std": 1000,
-    "random_light_count": 1,
+    "random_light_count": 3,
 }
 
 def set_fixed_topdown_camera():
@@ -259,6 +263,8 @@ def build_mdl_material_library(stage, mdl_entries):
         shader.CreateImplementationSourceAttr(UsdShade.Tokens.sourceAsset)
         shader.SetSourceAsset(mdl_url, "mdl")
         shader.SetSourceAssetSubIdentifier(subid, "mdl")
+        mtl.GetPrim().CreateAttribute("user:mdl_url", Sdf.ValueTypeNames.Asset).Set(mdl_url)
+        mtl.GetPrim().CreateAttribute("user:mdl_subidentifier", Sdf.ValueTypeNames.String).Set(subid)
 
         surf_out = mtl.CreateSurfaceOutput("mdl")
         surf_out.ConnectToSource(shader.ConnectableAPI(), "out")
@@ -279,6 +285,145 @@ def randomize_asset_materials(prims, materials):
         UsdShade.MaterialBindingAPI(prim).Bind(mat)
 
 
+def bind_material_to_meshes(root_prim, material):
+    """Bind a material to all mesh/gprim descendants of the given root."""
+    if material is None:
+        return
+    for desc in Usd.PrimRange(root_prim):
+        if desc.IsA(UsdGeom.Gprim):
+            UsdShade.MaterialBindingAPI(desc).Bind(material)
+
+
+def randomize_ground_plane_material(materials):
+    """Randomize material on the ground plane meshes."""
+    if not materials:
+        return
+    mat = random.choice(materials)
+    # Bind at root and all mesh descendants to ensure MDL sticks
+    UsdShade.MaterialBindingAPI(ground_plane_prim).Bind(mat)
+    bind_material_to_meshes(ground_plane_prim, mat)
+    mdl_url = mat.GetPrim().GetAttribute("user:mdl_url").Get()
+    subid = mat.GetPrim().GetAttribute("user:mdl_subidentifier").Get()
+    print(f"[SDG] GroundPlane material -> {subid} ({mdl_url})")
+
+
+def convert_coco_to_yolo_and_split(coco_root_path, yolo_root_path=None, train_ratio=0.8, seed=42):
+    """Convert COCO annotations to YOLO labels and split into train/val folders (no ultralytics dependency)."""
+
+    def _pick_coco_json(search_root: Path, preferred_stem: str = "coco_annotations"):
+        cand = []
+        for p in search_root.glob("*.json"):
+            cand.append(p)
+        rep_dir = search_root / "Replicator"
+        if rep_dir.exists():
+            cand.extend(rep_dir.glob("*.json"))
+        if not cand:
+            return None
+        def keyfunc(p):
+            stem_ok = p.stem.startswith(preferred_stem)
+            return (not stem_ok, -p.stat().st_size, -p.stat().st_mtime)
+        cand.sort(key=keyfunc)
+        return cand[0]
+
+    coco_root = Path(coco_root_path)
+    ann_path = None
+    if coco_root.exists():
+        ann_path = _pick_coco_json(coco_root)
+    if ann_path is None and coco_root.parent.exists():
+        siblings = sorted(coco_root.parent.glob(f"{coco_root.name}*"))
+        for sib in reversed(siblings):
+            ann_path = _pick_coco_json(sib)
+            if ann_path:
+                coco_root = sib
+                break
+    if ann_path is None:
+        print(f"[YOLO-CONVERT] No COCO json found under {coco_root_path} or siblings, skipping conversion.")
+        return
+
+    try:
+        with open(ann_path, "r") as f:
+            coco = json.load(f)
+    except Exception as exc:
+        print(f"[YOLO-CONVERT] Failed to read {ann_path}: {exc}")
+        return
+
+    images = coco.get("images", [])
+    annotations = coco.get("annotations", [])
+    categories = coco.get("categories", [])
+    if not images or not annotations or not categories:
+        print(f"[YOLO-CONVERT] Empty COCO annotations at {ann_path}, skipping.")
+        return
+
+    cat_id_to_yolo = {cat["id"]: idx for idx, cat in enumerate(categories)}
+    yolo_id_to_name = [cat.get("name", f"class_{i}") for i, cat in enumerate(categories)]
+
+    ann_by_image = {}
+    for ann in annotations:
+        img_id = ann.get("image_id")
+        ann_by_image.setdefault(img_id, []).append(ann)
+
+    # Deterministic split
+    yolo_root = Path(yolo_root_path) if yolo_root_path else coco_root
+    img_train_dir = yolo_root / "images" / "train"
+    img_val_dir = yolo_root / "images" / "val"
+    lbl_train_dir = yolo_root / "labels" / "train"
+    lbl_val_dir = yolo_root / "labels" / "val"
+    for d in [img_train_dir, img_val_dir, lbl_train_dir, lbl_val_dir]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    rng = random.Random(seed if seed is not None else 42)
+    rng.shuffle(images)
+    n_total = len(images)
+    n_train = max(0, min(n_total, int(round(n_total * train_ratio))))
+    train_images = set(img.get("id") for img in images[:n_train])
+
+    for img in images:
+        file_name = img.get("file_name")
+        width = img.get("width", 1)
+        height = img.get("height", 1)
+        img_src = coco_root / file_name
+        anns = ann_by_image.get(img.get("id"), [])
+        yolo_lines = []
+        for ann in anns:
+            bbox = ann.get("bbox", [0, 0, 0, 0])
+            if len(bbox) != 4 or width <= 0 or height <= 0:
+                continue
+            x, y, w, h = bbox
+            cx = (x + w / 2) / width
+            cy = (y + h / 2) / height
+            nw = w / width
+            nh = h / height
+            cid = ann.get("category_id")
+            yid = cat_id_to_yolo.get(cid)
+            if yid is None:
+                continue
+            yolo_lines.append(f"{yid} {cx:.6f} {cy:.6f} {nw:.6f} {nh:.6f}")
+
+        if img.get("id") in train_images:
+            img_dst = img_train_dir / img_src.name
+            lbl_dst = lbl_train_dir / (img_src.stem + ".txt")
+        else:
+            img_dst = img_val_dir / img_src.name
+            lbl_dst = lbl_val_dir / (img_src.stem + ".txt")
+
+        if img_src.exists():
+            img_dst.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                img_dst.write_bytes(img_src.read_bytes())
+            except Exception as exc:
+                print(f"[YOLO-CONVERT] Failed to copy image {img_src} -> {img_dst}: {exc}")
+        lbl_dst.parent.mkdir(parents=True, exist_ok=True)
+        lbl_dst.write_text("\n".join(yolo_lines))
+
+    # data.yaml
+    data_yaml = yolo_root / "data.yaml"
+    names_lines = "\n".join([f"  {i}: {n}" for i, n in enumerate(yolo_id_to_name)])
+    data_yaml.write_text(
+        f"train: images/train\nval: images/val\nnc: {len(yolo_id_to_name)}\nnames:\n{names_lines}\n"
+    )
+    print(f"[YOLO-CONVERT] YOLO dataset at: {yolo_root}")
+
+
 # Create a collision box area around the assets to prevent them from drifting away
 object_based_sdg_utils.create_collision_box_walls(
     stage, "/World/CollisionWalls", working_area_size[0], working_area_size[1], working_area_size[2]
@@ -297,6 +442,7 @@ ground_plane = GroundPlane(
 object_based_sdg_utils.set_transform_attributes(
     stage.GetPrimAtPath("/World/groundPlane"), location=(0.0, 0.0, floor_height)
 )
+ground_plane_prim = stage.GetPrimAtPath("/World/groundPlane")
 # ------------------------------------------------------------------
 
 
@@ -583,36 +729,43 @@ with rep.trigger.on_custom_event(event_name="randomize_shape_distractor_colors")
         rep.randomizer.color(colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1)))
 
 
-# Create a randomizer for lights in the working area, manually triggered at custom events
-with rep.trigger.on_custom_event(event_name="randomize_lights"):
-    lights = rep.create.light(
-        light_type="Sphere",
-        color=rep.distribution.uniform(LIGHT_SETTINGS["random_light_color_min"], LIGHT_SETTINGS["random_light_color_max"]),
-        temperature=rep.distribution.normal(
-            LIGHT_SETTINGS["random_light_temperature_mean"], LIGHT_SETTINGS["random_light_temperature_std"]
-        ),
-        intensity=rep.distribution.normal(
-            LIGHT_SETTINGS["random_light_intensity_mean"], LIGHT_SETTINGS["random_light_intensity_std"]
-        ),
-        position=rep.distribution.uniform(working_area_min, working_area_max),
-        # larger lights → softer shadows
-        scale=rep.distribution.uniform(0.3, 1.5),
-        count=LIGHT_SETTINGS["random_light_count"],
-    )
+
 
 
 # Create a randomizer for the dome background, manually triggered at custom events
-with rep.trigger.on_custom_event(event_name="randomize_dome_background"):
-    dome_textures = [
-        assets_root_path + "/NVIDIA/Assets/Skies/Indoor/autoshop_01_4k.hdr",
-        assets_root_path + "/NVIDIA/Assets/Skies/Indoor/carpentry_shop_01_4k.hdr",
-        assets_root_path + "/NVIDIA/Assets/Skies/Indoor/hotel_room_4k.hdr",
-        assets_root_path + "/NVIDIA/Assets/Skies/Indoor/wooden_lounge_4k.hdr",
-    ]
-    dome_light = rep.create.light(light_type="Dome")
-    with dome_light:
-        rep.modify.attribute("inputs:texture:file", rep.distribution.choice(dome_textures))
-        rep.randomizer.rotation()
+dome_textures = [
+    assets_root_path + "/NVIDIA/Assets/Skies/Indoor/autoshop_01_4k.hdr",
+    assets_root_path + "/NVIDIA/Assets/Skies/Indoor/carpentry_shop_01_4k.hdr",
+    assets_root_path + "/NVIDIA/Assets/Skies/Indoor/hotel_room_4k.hdr",
+    assets_root_path + "/NVIDIA/Assets/Skies/Indoor/wooden_lounge_4k.hdr",
+]
+
+
+def randomize_dome_background():
+    tex = random.choice(dome_textures)
+    dome_path = "/World/DomeLight"
+    if not stage.GetPrimAtPath(dome_path).IsValid():
+        dome_light = UsdLux.DomeLight.Define(stage, dome_path)
+    else:
+        dome_light = UsdLux.DomeLight(stage.GetPrimAtPath(dome_path))
+    dome_light.CreateIntensityAttr().Set(100.0)
+    dome_light.CreateTextureFileAttr().Set(Sdf.AssetPath(tex))
+    dome_light.CreateColorAttr().Set((1.0, 1.0, 1.0))
+    dome_light.CreateDiffuseAttr().Set(1.0)
+    dome_light.CreateSpecularAttr().Set(1.0)
+    dome_light.CreateTextureFormatAttr().Set("latlong")
+    # optional: random rotation
+    xformable = UsdGeom.Xformable(dome_light)
+    ops = xformable.GetOrderedXformOps()
+    rot_op = None
+    for op in ops:
+        if op.GetOpType() == UsdGeom.XformOp.TypeRotateZ:
+            rot_op = op
+            break
+    if rot_op is None:
+        rot_op = xformable.AddRotateZOp()
+    rot_op.Set(random.uniform(0, 360))
+    print(f"[SDG] Dome texture -> {tex}")
 
 
 # Capture motion blur by combining the number of pathtraced subframes samples simulated for the given duration
@@ -666,13 +819,15 @@ rt_subframes = config.get("rt_subframes", -1)
 
 # Initial trigger for randomizers before the SDG loop with several app updates (ensures materials/textures are loaded)
 rep.utils.send_og_event(event_name="randomize_shape_distractor_colors")
-rep.utils.send_og_event(event_name="randomize_dome_background")
+randomize_dome_background()
 for _ in range(5):
     simulation_app.update()
 
 # Build MDL materials from config for per-frame asset material randomization
 asset_mdl_entries = config.get("asset_mdl_materials", [])
 asset_mdl_materials = build_mdl_material_library(stage, asset_mdl_entries)
+floor_mdl_entries = config.get("floor_mdl_materials", [])
+floor_mdl_materials = build_mdl_material_library(stage, floor_mdl_entries)
 
 # Set the timeline parameters (start, end, no looping) and start the timeline
 timeline = omni.timeline.get_timeline_interface()
@@ -698,6 +853,7 @@ for i in range(num_frames):
     spawn_mesh_distractors()
     # Randomize MDL materials on labeled assets every frame
     randomize_asset_materials(labeled_prims, asset_mdl_materials)
+    randomize_ground_plane_material(floor_mdl_materials)
     wait_for_labeled_assets_to_settle(timeline)
 
     # Randomize lights locations and colors
@@ -713,7 +869,7 @@ for i in range(num_frames):
     # Randomize the texture of the dome background
     if i % 25 == 0:
         print(f"\t Randomizing dome background")
-        rep.utils.send_og_event(event_name="randomize_dome_background")
+        randomize_dome_background()
 
     # Enable render products only at capture time
     if disable_render_products_between_captures:
@@ -732,6 +888,13 @@ for i in range(num_frames):
 
 # Wait for the data to be written (default writer backends are asynchronous)
 rep.orchestrator.wait_until_complete()
+
+# Convert COCO output to YOLO format and split train/val if using CocoWriter
+yolo_output_dir = config.get("yolo_output_dir")
+yolo_split_ratio = config.get("yolo_split_ratio", 0.8)
+yolo_split_seed = config.get("yolo_split_seed", 42)
+if writer_type == "CocoWriter" and out_dir:
+    convert_coco_to_yolo_and_split(out_dir, yolo_output_dir, train_ratio=yolo_split_ratio, seed=yolo_split_seed)
 
 # Get the stats
 wall_duration = time.perf_counter() - wall_time_start
