@@ -195,7 +195,7 @@ mesh_distractors_urls:
 mesh_distractors_scale_min_max:
   - 0.35
   - 1.35
-mesh_distractors_num: 30
+mesh_distractors_num: 10
 
 floor_mdl_materials:
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Masonry/Facade_Brick_Red_Clinker.mdl"
