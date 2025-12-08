@@ -133,7 +133,7 @@ import usdrt
 from isaacsim.core.api.objects.ground_plane import GroundPlane
 from isaacsim.core.utils.semantics import add_labels, remove_labels, upgrade_prim_semantics_to_labels
 from isaacsim.storage.native import get_assets_root_path
-from pxr import PhysxSchema, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics
+from pxr import PhysxSchema, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics, Gf
 from pxr import UsdShade
 
 # Isaac nucleus assets root path
@@ -153,6 +153,18 @@ if pt_cfg.get("enabled"):
 else:
     settings.set("/rtx/rendermode", "RaytracedLighting")
 
+# Volumetric Fog
+settings.set("/rtx/fog/enabled", True)
+settings.set("/rtx/fog/fogType", "linear")
+settings.set("/rtx/fog/density", 0.002)
+settings.set("/rtx/fog/startDistance", 0.0)
+settings.set("/rtx/fog/endDistance", 100.0)
+settings.set("/rtx/fog/fogColor", (0.8, 0.85, 0.9))
+
+# Film Grain (Sensor Noise)
+settings.set("/rtx/post/tonemap/filmIso", 800.0)
+settings.set("/rtx/post/tonemap/enable", True)
+
 # ENVIRONMENT
 env_url = config.get("env_url", "")
 if env_url:
@@ -170,37 +182,83 @@ CAMERA_DISTANCE_ABOVE_OBJECTS = 6.0   # tweak this
 
 # Centralized light tweakables
 LIGHT_SETTINGS = {
-    "distant_intensity": 4000,
-    "random_light_color_min": (0.0, 0.0, 0.0),
+    "distant_intensity": 7000,
+    "random_light_color_min": (0.9, 0.9, 0.9),
     "random_light_color_max": (1.0, 1.0, 1.0),
-    "random_light_temperature_mean": 650,
+    "random_light_temperature_mean": 6500,
     "random_light_temperature_std": 500,
-    "random_light_intensity_mean": 1000,
-    "random_light_intensity_std": 1000,
+    "random_light_intensity_mean": 6000,
+    "random_light_intensity_std": 500,
     "random_light_count": 3,
 }
 
-def set_fixed_topdown_camera():
-    cam_path = "/World/Cameras/cam_0"
-    cam_prim = stage.GetPrimAtPath(cam_path)
-
-    if not cam_prim.IsValid():
-        print(f"[WARN] Camera prim {cam_path} not found")
+def update_camera_pose():
+    if not labeled_prims:
         return
 
-    # Use your computed object band height
-    cam_loc = (0.0, 0.0, OBJECT_Z + CAMERA_DISTANCE_ABOVE_OBJECTS)
+    # Calculate centroid of labeled assets
+    positions = []
+    for prim in labeled_prims:
+        # Get current translation
+        xform = UsdGeom.Xformable(prim)
+        mat = xform.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        trans = mat.ExtractTranslation()
+        positions.append(np.array(trans))
 
-    # Look straight down (if inverted, use +90)
-    cam_rot = (0.0, 0.0, 0.0)
+    if not positions:
+        return
 
-    object_based_sdg_utils.set_transform_attributes(
-        cam_prim,
-        location=cam_loc,
-        rotation=cam_rot
-    )
+    positions = np.array(positions)
+    centroid = np.mean(positions, axis=0)
 
-    print(f"[INFO] Fixed camera set at {cam_loc}, rot={cam_rot}")
+    # Bounding sphere radius
+    dists = np.linalg.norm(positions - centroid, axis=1)
+    radius = np.max(dists) if len(dists) > 0 else 0.5
+
+    # Ensure 70% visibility -> Fit 100% in FOV with margin
+    # FOV approx 45 deg -> dist ~= 2.6 * radius
+    # User requested to zoom out a bit from the "much closer" setting
+    min_dist = max(radius * 2.0, 2.0)
+    dist = random.uniform(min_dist, min_dist * 1.3)
+
+    # Random position on upper hemisphere
+    azimuth = random.uniform(0, 2 * np.pi)
+    elevation = random.uniform(np.deg2rad(20), np.deg2rad(80))
+
+    x = dist * np.cos(elevation) * np.cos(azimuth)
+    y = dist * np.cos(elevation) * np.sin(azimuth)
+    z = dist * np.sin(elevation)
+
+    cam_loc = centroid + np.array([x, y, z])
+
+    # Ensure camera is above floor
+    if cam_loc[2] < floor_height + 0.5:
+        cam_loc[2] = floor_height + 0.5
+
+    # Look at centroid
+    target = centroid
+
+    # Calculate orientation (Quaternion)
+    eye = Gf.Vec3d(cam_loc.tolist())
+    center = Gf.Vec3d(target.tolist())
+    up = Gf.Vec3d(0, 0, 1)
+
+    # Gf.Matrix4d().SetLookAt creates a view matrix (world to camera). We want camera to world.
+    m = Gf.Matrix4d().SetLookAt(eye, center, up)
+    m = m.GetInverse()
+
+    # Extract rotation
+    q = m.ExtractRotation().GetQuat()
+
+    # Set for all cameras
+    for cam_prim in cameras:
+        object_based_sdg_utils.set_transform_attributes(
+            cam_prim,
+            location=tuple(cam_loc),
+            orientation=Gf.Quatf(q)
+        )
+
+    print(f"[INFO] Camera updated to look at {target} from {cam_loc}")
 
 
 
@@ -238,7 +296,7 @@ spawn_max_z = floor_height + 1.50
 working_area_min = (min_x, min_y, spawn_min_z)
 working_area_max = (max_x, max_y, spawn_max_z)
 
-def build_mdl_material_library(stage, mdl_entries):
+def build_mdl_material_library(stage, mdl_entries, prefix="AssetMat"):
     """
     Given a list of dicts:
         [{ "mdl_url": "...", "subidentifier": "..." }, ...]
@@ -257,7 +315,7 @@ def build_mdl_material_library(stage, mdl_entries):
         if not subid:
             subid = mdl_url.split("/")[-1].replace(".mdl", "")
 
-        mtl_path = Sdf.Path(f"/World/Looks/AssetMat_{idx}")
+        mtl_path = Sdf.Path(f"/World/Looks/{prefix}_{idx}")
         mtl = UsdShade.Material.Define(stage, mtl_path)
         shader = UsdShade.Shader.Define(stage, mtl_path.AppendPath("Shader"))
         shader.CreateImplementationSourceAttr(UsdShade.Tokens.sourceAsset)
@@ -432,17 +490,49 @@ object_based_sdg_utils.create_collision_box_walls(
 # ---- FLOOR PLANE -------------------------------------------------
 # Use a physics-enabled ground plane instead of a flattened cube
 floor_height = -working_area_size[2] / 2.0  # bottom of the collision box
-ground_plane_size = max(working_area_size[0], working_area_size[1])
-ground_plane = GroundPlane(
-    prim_path="/World/groundPlane",
-    size=ground_plane_size,
-    color=np.array([0.5, 0.5, 0.5]),
-)
-# Align the ground plane with the bottom of the working area so falling assets land on it
-object_based_sdg_utils.set_transform_attributes(
-    stage.GetPrimAtPath("/World/groundPlane"), location=(0.0, 0.0, floor_height)
-)
-ground_plane_prim = stage.GetPrimAtPath("/World/groundPlane")
+ground_plane_size = max(working_area_size[0], working_area_size[1]) * 4.0
+
+def create_ground_plane_mesh(stage, path, size, height):
+    """Create a simple quad mesh for the ground plane with UVs."""
+    mesh = UsdGeom.Mesh.Define(stage, path)
+    half_size = size / 2.0
+    
+    # Vertices for a quad
+    points = [
+        (-half_size, -half_size, 0),
+        (half_size, -half_size, 0),
+        (half_size, half_size, 0),
+        (-half_size, half_size, 0),
+    ]
+    mesh.CreatePointsAttr(points)
+    
+    # Face vertex counts (one face with 4 vertices)
+    mesh.CreateFaceVertexCountsAttr([4])
+    
+    # Face vertex indices
+    mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
+    
+    # Normals
+    mesh.CreateNormalsAttr([(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)])
+    
+    # Texture coordinates (UVs)
+    # Scale UVs to match the increased ground plane size (4x) to avoid stretched textures
+    uv_scale = 4.0
+    tex_coords = [(0, 0), (uv_scale, 0), (uv_scale, uv_scale), (0, uv_scale)]
+    primvars_api = UsdGeom.PrimvarsAPI(mesh)
+    pv = primvars_api.CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex)
+    pv.Set(tex_coords)
+    
+    # Set transform
+    object_based_sdg_utils.set_transform_attributes(
+        mesh.GetPrim(), location=(0.0, 0.0, height)
+    )
+    
+    return mesh.GetPrim()
+
+ground_plane_prim = create_ground_plane_mesh(stage, "/World/groundPlane", ground_plane_size, floor_height)
+# Add collision
+object_based_sdg_utils.add_colliders(ground_plane_prim)
 # ------------------------------------------------------------------
 
 
@@ -490,14 +580,37 @@ def spawn_labeled_assets(max_label_types=None):
     else:
         chosen_objs = labeled_assets_and_properties
 
+    # Clustering logic: 50% chance to spawn in a tighter area for occlusions
+    use_clustering = random.random() < 0.5
+    if use_clustering:
+        # Define a smaller box within the working area (e.g., 40% of the size)
+        cluster_ratio = 0.4
+        area_w = max_x - min_x
+        area_h = max_y - min_y
+        cluster_w = area_w * cluster_ratio
+        cluster_h = area_h * cluster_ratio
+        
+        # Random center for the cluster
+        center_x = random.uniform(min_x + cluster_w/2, max_x - cluster_w/2)
+        center_y = random.uniform(min_y + cluster_h/2, max_y - cluster_h/2)
+        
+        spawn_min_x = center_x - cluster_w / 2
+        spawn_max_x = center_x + cluster_w / 2
+        spawn_min_y = center_y - cluster_h / 2
+        spawn_max_y = center_y + cluster_h / 2
+        print(f"[SDG] Spawning objects in a cluster at ({center_x:.2f}, {center_y:.2f})")
+    else:
+        spawn_min_x, spawn_max_x = min_x, max_x
+        spawn_min_y, spawn_max_y = min_y, max_y
+
     for obj in chosen_objs:
         obj_url = obj.get("url", "")
         label = obj.get("label", "unknown")
         count = obj.get("count", 1)
         for _ in range(count):
             rand_loc, rand_rot, _ = object_based_sdg_utils.get_random_transform_values(
-                loc_min=(min_x, min_y, drop_height_min),
-                loc_max=(max_x, max_y, drop_height_max),
+                loc_min=(spawn_min_x, spawn_min_y, drop_height_min),
+                loc_max=(spawn_max_x, spawn_max_y, drop_height_max),
                 scale_min_max=(1, 1),  # keep authored scale
             )
             prim_path = omni.usd.get_stage_next_free_path(stage, f"/World/Labeled/{label}", False)
@@ -729,6 +842,18 @@ with rep.trigger.on_custom_event(event_name="randomize_shape_distractor_colors")
         rep.randomizer.color(colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1)))
 
 
+# Create a randomizer for the lights, manually triggered at custom events
+with rep.trigger.on_custom_event(event_name="randomize_lights"):
+    # Randomize Distant Light
+    distant_light_rep = rep.get.prims(path_pattern="/World/Lights/DistantLight")
+    with distant_light_rep:
+        # Constrain rotation to keep light coming from above (Y rotation 10-80 degrees, Z rotation 0-360)
+        rep.modify.pose(rotation=rep.distribution.uniform((0, 10, 0), (0, 80, 360)))
+        rep.randomizer.color(colors=rep.distribution.uniform(LIGHT_SETTINGS["random_light_color_min"], LIGHT_SETTINGS["random_light_color_max"]))
+        rep.modify.attribute("inputs:intensity", rep.distribution.normal(LIGHT_SETTINGS["random_light_intensity_mean"], LIGHT_SETTINGS["random_light_intensity_std"]))
+        rep.modify.attribute("inputs:colorTemperature", rep.distribution.normal(LIGHT_SETTINGS["random_light_temperature_mean"], LIGHT_SETTINGS["random_light_temperature_std"]))
+
+
 
 
 
@@ -748,7 +873,7 @@ def randomize_dome_background():
         dome_light = UsdLux.DomeLight.Define(stage, dome_path)
     else:
         dome_light = UsdLux.DomeLight(stage.GetPrimAtPath(dome_path))
-    dome_light.CreateIntensityAttr().Set(100.0)
+    dome_light.CreateIntensityAttr().Set(1000.0)
     dome_light.CreateTextureFileAttr().Set(Sdf.AssetPath(tex))
     dome_light.CreateColorAttr().Set((1.0, 1.0, 1.0))
     dome_light.CreateDiffuseAttr().Set(1.0)
@@ -825,9 +950,9 @@ for _ in range(5):
 
 # Build MDL materials from config for per-frame asset material randomization
 asset_mdl_entries = config.get("asset_mdl_materials", [])
-asset_mdl_materials = build_mdl_material_library(stage, asset_mdl_entries)
+asset_mdl_materials = build_mdl_material_library(stage, asset_mdl_entries, prefix="AssetMat")
 floor_mdl_entries = config.get("floor_mdl_materials", [])
-floor_mdl_materials = build_mdl_material_library(stage, floor_mdl_entries)
+floor_mdl_materials = build_mdl_material_library(stage, floor_mdl_entries, prefix="FloorMat")
 
 # Set the timeline parameters (start, end, no looping) and start the timeline
 timeline = omni.timeline.get_timeline_interface()
@@ -843,7 +968,8 @@ simulation_app.update()
 wall_time_start = time.perf_counter()
 
 # Set camera once in a fixed top-down pose
-set_fixed_topdown_camera()
+# Set camera once in a fixed top-down pose (initial)
+update_camera_pose()
 # Run the simulation and capture data triggering randomizations and actions at custom frame intervals
 for i in range(num_frames):
     print(f"[SDG] Spawning and dropping labeled assets for frame {i}")
@@ -854,7 +980,9 @@ for i in range(num_frames):
     # Randomize MDL materials on labeled assets every frame
     randomize_asset_materials(labeled_prims, asset_mdl_materials)
     randomize_ground_plane_material(floor_mdl_materials)
-    wait_for_labeled_assets_to_settle(timeline)
+    # Increase wait time and strictness to ensure objects are not floating
+    wait_for_labeled_assets_to_settle(timeline, max_duration=20.0, lin_thresh=0.005, ang_thresh=0.05)
+    update_camera_pose()
 
     # Randomize lights locations and colors
     if i % 5 == 0:

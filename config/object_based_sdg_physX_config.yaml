@@ -238,3 +238,5 @@ asset_mdl_materials:
     subidentifier: "Chromium"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Aluminum_Knurling.mdl"
     subidentifier: "Aluminum_Knurling"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Iron_Hammered.mdl"
+    subidentifier: "Iron_Hammered"
