@@ -196,47 +196,27 @@ def update_camera_pose():
     if not labeled_prims:
         return
 
-    # Calculate centroid of labeled assets
-    positions = []
-    for prim in labeled_prims:
-        # Get current translation
-        xform = UsdGeom.Xformable(prim)
-        mat = xform.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
-        trans = mat.ExtractTranslation()
-        positions.append(np.array(trans))
+    # Look at the center of the workspace where objects are dropped
+    target = np.array([0.0, 0.0, floor_height])
 
-    if not positions:
-        return
+    # Use the configured distance range
+    min_dist, max_dist = config.get("camera_distance_to_target_min_max", (0.25, 0.75))
+    dist = random.uniform(min_dist, max_dist)
 
-    positions = np.array(positions)
-    centroid = np.mean(positions, axis=0)
-
-    # Bounding sphere radius
-    dists = np.linalg.norm(positions - centroid, axis=1)
-    radius = np.max(dists) if len(dists) > 0 else 0.5
-
-    # Ensure 70% visibility -> Fit 100% in FOV with margin
-    # FOV approx 45 deg -> dist ~= 2.6 * radius
-    # User requested to zoom out a bit from the "much closer" setting
-    min_dist = max(radius * 2.0, 2.0)
-    dist = random.uniform(min_dist, min_dist * 1.3)
-
-    # Random position on upper hemisphere
+    # Top-down view (high elevation) to match reference images
     azimuth = random.uniform(0, 2 * np.pi)
-    elevation = random.uniform(np.deg2rad(20), np.deg2rad(80))
+    # Elevation between 70 and 90 degrees (0 is horizontal, 90 is vertical)
+    elevation = random.uniform(np.deg2rad(70), np.deg2rad(90))
 
     x = dist * np.cos(elevation) * np.cos(azimuth)
     y = dist * np.cos(elevation) * np.sin(azimuth)
     z = dist * np.sin(elevation)
 
-    cam_loc = centroid + np.array([x, y, z])
+    cam_loc = target + np.array([x, y, z])
 
     # Ensure camera is above floor
-    if cam_loc[2] < floor_height + 0.5:
-        cam_loc[2] = floor_height + 0.5
-
-    # Look at centroid
-    target = centroid
+    if cam_loc[2] < floor_height + 0.1:
+        cam_loc[2] = floor_height + 0.1
 
     # Calculate orientation (Quaternion)
     eye = Gf.Vec3d(cam_loc.tolist())
@@ -580,28 +560,13 @@ def spawn_labeled_assets(max_label_types=None):
     else:
         chosen_objs = labeled_assets_and_properties
 
-    # Clustering logic: 50% chance to spawn in a tighter area for occlusions
-    use_clustering = random.random() < 0.5
-    if use_clustering:
-        # Define a smaller box within the working area (e.g., 40% of the size)
-        cluster_ratio = 0.4
-        area_w = max_x - min_x
-        area_h = max_y - min_y
-        cluster_w = area_w * cluster_ratio
-        cluster_h = area_h * cluster_ratio
-        
-        # Random center for the cluster
-        center_x = random.uniform(min_x + cluster_w/2, max_x - cluster_w/2)
-        center_y = random.uniform(min_y + cluster_h/2, max_y - cluster_h/2)
-        
-        spawn_min_x = center_x - cluster_w / 2
-        spawn_max_x = center_x + cluster_w / 2
-        spawn_min_y = center_y - cluster_h / 2
-        spawn_max_y = center_y + cluster_h / 2
-        print(f"[SDG] Spawning objects in a cluster at ({center_x:.2f}, {center_y:.2f})")
-    else:
-        spawn_min_x, spawn_max_x = min_x, max_x
-        spawn_min_y, spawn_max_y = min_y, max_y
+    # Force spawning at the center to create a pile, matching reference images
+    # Define a small box around the center (0,0)
+    spawn_width = 0.6
+    spawn_height = 0.6
+    spawn_min_x, spawn_max_x = -spawn_width/2, spawn_width/2
+    spawn_min_y, spawn_max_y = -spawn_height/2, spawn_height/2
+    print(f"[SDG] Spawning objects at center with spread {spawn_width}x{spawn_height}")
 
     for obj in chosen_objs:
         obj_url = obj.get("url", "")
@@ -631,7 +596,7 @@ def spawn_labeled_assets(max_label_types=None):
     return spawned
 
 
-def wait_for_labeled_assets_to_settle(timeline, max_duration=3.0, lin_thresh=0.02, ang_thresh=1.0):
+def wait_for_labeled_assets_to_settle(timeline, max_duration=3.0, lin_thresh=0.02, ang_thresh=1.0, check_interval=10):
     """Simulate until labeled assets rest on the ground plane or timeout."""
     if not labeled_prims and not mesh_distractors:
         return
@@ -639,8 +604,18 @@ def wait_for_labeled_assets_to_settle(timeline, max_duration=3.0, lin_thresh=0.0
         timeline.play()
     elapsed = 0.0
     previous_time = timeline.get_current_time()
+    steps = 0
     while elapsed < max_duration:
         simulation_app.update()
+        steps += 1
+        
+        # Only check for settling every 'check_interval' steps to save performance
+        if steps % check_interval != 0:
+            current_time = timeline.get_current_time()
+            elapsed += current_time - previous_time
+            previous_time = current_time
+            continue
+
         all_settled = True
         for prim in labeled_prims + mesh_distractors:
             lin_vel = prim.GetAttribute("physics:velocity").Get() if prim.HasAttribute("physics:velocity") else (0, 0, 0)
@@ -703,15 +678,21 @@ def clear_mesh_distractors():
     stage.DefinePrim("/World/Distractors/Mesh", "Xform")
     mesh_distractors = []
 
-
 def spawn_mesh_distractors():
     """Spawn mesh distractors at random XY/height with physics enabled, similar to labeled assets."""
     global mesh_distractors
     clear_mesh_distractors()
+    
+    # Force spawning at the center to create a pile, matching reference images
+    spawn_width = 0.8
+    spawn_height = 0.8
+    spawn_min_x, spawn_max_x = -spawn_width/2, spawn_width/2
+    spawn_min_y, spawn_max_y = -spawn_height/2, spawn_height/2
+
     for i in range(mesh_distactors_num):
         rand_loc, rand_rot, rand_scale = object_based_sdg_utils.get_random_transform_values(
-            loc_min=(min_x, min_y, drop_height_min),
-            loc_max=(max_x, max_y, drop_height_max),
+            loc_min=(spawn_min_x, spawn_min_y, drop_height_min),
+            loc_max=(spawn_max_x, spawn_max_y, drop_height_max),
             scale_min_max=mesh_distactors_scale_min_max,
         )
         mesh_url = random.choice(mesh_distactors_urls)
@@ -852,6 +833,8 @@ with rep.trigger.on_custom_event(event_name="randomize_lights"):
         rep.randomizer.color(colors=rep.distribution.uniform(LIGHT_SETTINGS["random_light_color_min"], LIGHT_SETTINGS["random_light_color_max"]))
         rep.modify.attribute("inputs:intensity", rep.distribution.normal(LIGHT_SETTINGS["random_light_intensity_mean"], LIGHT_SETTINGS["random_light_intensity_std"]))
         rep.modify.attribute("inputs:colorTemperature", rep.distribution.normal(LIGHT_SETTINGS["random_light_temperature_mean"], LIGHT_SETTINGS["random_light_temperature_std"]))
+        # Randomize shadow softness (angle) to match various lighting conditions (sharp vs soft shadows)
+        rep.modify.attribute("inputs:angle", rep.distribution.uniform(0.1, 1.5))
 
 
 
@@ -981,7 +964,7 @@ for i in range(num_frames):
     randomize_asset_materials(labeled_prims, asset_mdl_materials)
     randomize_ground_plane_material(floor_mdl_materials)
     # Increase wait time and strictness to ensure objects are not floating
-    wait_for_labeled_assets_to_settle(timeline, max_duration=20.0, lin_thresh=0.005, ang_thresh=0.05)
+    wait_for_labeled_assets_to_settle(timeline, max_duration=5.0, lin_thresh=0.15, ang_thresh=0.15, check_interval=5)
     update_camera_pose()
 
     # Randomize lights locations and colors
@@ -999,6 +982,14 @@ for i in range(num_frames):
         print(f"\t Randomizing dome background")
         randomize_dome_background()
 
+    # Randomly disable dome light for 30% of frames to get darker images
+    if stage.GetPrimAtPath("/World/DomeLight").IsValid():
+        dome_light = UsdLux.DomeLight(stage.GetPrimAtPath("/World/DomeLight"))
+        if random.random() < 0.3:
+            dome_light.GetIntensityAttr().Set(0.0)
+        else:
+            dome_light.GetIntensityAttr().Set(1000.0)
+
     # Enable render products only at capture time
     if disable_render_products_between_captures:
         object_based_sdg_utils.set_render_products_updates(render_products, True, include_viewport=False)
@@ -1006,7 +997,7 @@ for i in range(num_frames):
     # Capture the current frame
     print(f"[SDG] Capturing frame {i}/{num_frames}, at simulation time: {timeline.get_current_time():.2f}")
     if i % 5 == 0:
-        capture_with_motion_blur_and_pathtracing(duration=0.025, num_samples=8, spp=128)
+        capture_with_motion_blur_and_pathtracing(duration=0.025, num_samples=4, spp=64)
     else:
         rep.orchestrator.step(delta_time=0.0, rt_subframes=rt_subframes, pause_timeline=False)
 

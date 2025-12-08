@@ -6,7 +6,7 @@ working_area_size:
 - 5
 - 5
 - 1
-rt_subframes: 50
+rt_subframes: 8
 num_frames: 10
 num_cameras: 1
 disable_render_products_between_captures: false
@@ -19,14 +19,14 @@ camera_distance_to_target_min_max:
   - 5.00
   - 10.00
 labeled_assets_and_properties:
-- url: "omniverse://localhost/Library/Datasets/SM_Angle.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Angle.usd"
   label: "sm_angle"
   count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
-- url: "omniverse://localhost/Library/Datasets/SM_ballstem.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_ballstem.usd"
   label: "sm_ballstem"
   count: 3
   floating: true
@@ -34,7 +34,7 @@ labeled_assets_and_properties:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Datasets/SM_Bilincs_Bilincs_003.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Bilincs_Bilincs_003.usd"
   label: "sm_bilincs_bilincs_003"
   count: 3
   floating: true
@@ -42,7 +42,7 @@ labeled_assets_and_properties:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Datasets/SM_body.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_body.usd"
   label: "sm_body"
   count: 3
   floating: true
@@ -50,7 +50,7 @@ labeled_assets_and_properties:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Datasets/SM_Bonnet.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Bonnet.usd"
   label: "sm_bonnet"
   count: 3
   floating: true
@@ -58,7 +58,7 @@ labeled_assets_and_properties:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Datasets/SM_Erveg2.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Erveg2.usd"
   label: "sm_erveg2"
   count: 3
   floating: true
@@ -66,7 +66,7 @@ labeled_assets_and_properties:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Datasets/SM_handle.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_handle.usd"
   label: "sm_handle"
   count: 3
   floating: true
@@ -74,7 +74,7 @@ labeled_assets_and_properties:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Datasets/SM_Pipe_Clamp_25.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Pipe_Clamp_25.usd"
   label: "sm_pipe_clamp_25"
   count: 3
   floating: true
@@ -82,7 +82,7 @@ labeled_assets_and_properties:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Datasets/SM_Rightangle2.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Rightangle2.usd"
   label: "sm_rightangle2"
   count: 3
   floating: true
@@ -90,7 +90,7 @@ labeled_assets_and_properties:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Datasets/SM_seat.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_seat.usd"
   label: "sm_seat"
   count: 3
   floating: true
@@ -184,14 +184,14 @@ shape_distractors_scale_min_max:
   - 0.15
 shape_distractors_num: 10
 mesh_distractors_urls:
-- omniverse://localhost/Library/Distractors/0.usdc
-- omniverse://localhost/Library/Distractors/1.usdc
-- omniverse://localhost/Library/Distractors/2.usdc
-- omniverse://localhost/Library/Distractors/3.usdc
-- omniverse://localhost/Library/Distractors/6.usdc
-- omniverse://localhost/Library/Distractors/7.usdc
-- omniverse://localhost/Library/Distractors/8.usdc
-- omniverse://localhost/Library/Distractors/9.usdc
+- omniverse://localhost/Library/Roboforge_collections/Distractors/0.usdc
+- omniverse://localhost/Library/Roboforge_collections/Distractors/1.usdc
+- omniverse://localhost/Library/Roboforge_collections/Distractors/2.usdc
+- omniverse://localhost/Library/Roboforge_collections/Distractors/3.usdc
+- omniverse://localhost/Library/Roboforge_collections/Distractors/6.usdc
+- omniverse://localhost/Library/Roboforge_collections/Distractors/7.usdc
+- omniverse://localhost/Library/Roboforge_collections/Distractors/8.usdc
+- omniverse://localhost/Library/Roboforge_collections/Distractors/9.usdc
 mesh_distractors_scale_min_max:
   - 0.35
   - 1.35
