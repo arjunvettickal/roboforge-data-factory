@@ -16,6 +16,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 
 import yaml
 from isaacsim import SimulationApp
@@ -78,6 +79,9 @@ config = {
     ],
     "mesh_distractors_scale_min_max": (0.35, 1.35),
     "mesh_distractors_num": 75,
+    "yolo_output_dir": "_out_yolo",
+    "yolo_split_ratio": 0.8,
+    "yolo_split_seed": 42,
     "pathtracing": {
         "enabled": False,
         "spp": 256,
@@ -129,7 +133,7 @@ import usdrt
 from isaacsim.core.api.objects.ground_plane import GroundPlane
 from isaacsim.core.utils.semantics import add_labels, remove_labels, upgrade_prim_semantics_to_labels
 from isaacsim.storage.native import get_assets_root_path
-from pxr import PhysxSchema, Sdf, UsdGeom, UsdPhysics
+from pxr import PhysxSchema, Sdf, Usd, UsdGeom, UsdLux, UsdPhysics, Gf
 from pxr import UsdShade
 
 # Isaac nucleus assets root path
@@ -139,7 +143,7 @@ stage = None
 # Global RTX shadow softness (helps avoid razor-sharp shadows)
 settings = carb.settings.get_settings()
 settings.set("/rtx/shadows/softShadows", True)
-settings.set("/rtx/shadows/sunArea", 1.0)   
+settings.set("/rtx/shadows/sunArea", 0.01)   
 pt_cfg = config.get("pathtracing", {})
 if pt_cfg.get("enabled"):
     settings.set("/rtx/rendermode", "PathTracing")
@@ -148,6 +152,18 @@ if pt_cfg.get("enabled"):
     settings.set("/rtx/pathtracing/optixDenoiser/enabled", 1 if pt_cfg.get("denoiser", True) else 0)
 else:
     settings.set("/rtx/rendermode", "RaytracedLighting")
+
+# Volumetric Fog
+settings.set("/rtx/fog/enabled", True)
+settings.set("/rtx/fog/fogType", "linear")
+settings.set("/rtx/fog/density", 0.002)
+settings.set("/rtx/fog/startDistance", 0.0)
+settings.set("/rtx/fog/endDistance", 100.0)
+settings.set("/rtx/fog/fogColor", (0.8, 0.85, 0.9))
+
+# Film Grain (Sensor Noise)
+settings.set("/rtx/post/tonemap/filmIso", 800.0)
+settings.set("/rtx/post/tonemap/enable", True)
 
 # ENVIRONMENT
 env_url = config.get("env_url", "")
@@ -166,37 +182,83 @@ CAMERA_DISTANCE_ABOVE_OBJECTS = 6.0   # tweak this
 
 # Centralized light tweakables
 LIGHT_SETTINGS = {
-    "distant_intensity": 4000,
-    "random_light_color_min": (0.0, 0.0, 0.0),
+    "distant_intensity": 7000,
+    "random_light_color_min": (0.9, 0.9, 0.9),
     "random_light_color_max": (1.0, 1.0, 1.0),
-    "random_light_temperature_mean": 650,
-    "random_light_temperature_std": 5000,
-    "random_light_intensity_mean": 2000,
-    "random_light_intensity_std": 1000,
-    "random_light_count": 1,
+    "random_light_temperature_mean": 6500,
+    "random_light_temperature_std": 500,
+    "random_light_intensity_mean": 6000,
+    "random_light_intensity_std": 500,
+    "random_light_count": 3,
 }
 
-def set_fixed_topdown_camera():
-    cam_path = "/World/Cameras/cam_0"
-    cam_prim = stage.GetPrimAtPath(cam_path)
-
-    if not cam_prim.IsValid():
-        print(f"[WARN] Camera prim {cam_path} not found")
+def update_camera_pose():
+    if not labeled_prims:
         return
 
-    # Use your computed object band height
-    cam_loc = (0.0, 0.0, OBJECT_Z + CAMERA_DISTANCE_ABOVE_OBJECTS)
+    # Calculate centroid of labeled assets
+    positions = []
+    for prim in labeled_prims:
+        # Get current translation
+        xform = UsdGeom.Xformable(prim)
+        mat = xform.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        trans = mat.ExtractTranslation()
+        positions.append(np.array(trans))
 
-    # Look straight down (if inverted, use +90)
-    cam_rot = (0.0, 0.0, 0.0)
+    if not positions:
+        return
 
-    object_based_sdg_utils.set_transform_attributes(
-        cam_prim,
-        location=cam_loc,
-        rotation=cam_rot
-    )
+    positions = np.array(positions)
+    centroid = np.mean(positions, axis=0)
 
-    print(f"[INFO] Fixed camera set at {cam_loc}, rot={cam_rot}")
+    # Bounding sphere radius
+    dists = np.linalg.norm(positions - centroid, axis=1)
+    radius = np.max(dists) if len(dists) > 0 else 0.5
+
+    # Ensure 70% visibility -> Fit 100% in FOV with margin
+    # FOV approx 45 deg -> dist ~= 2.6 * radius
+    # User requested to zoom out a bit from the "much closer" setting
+    min_dist = max(radius * 2.0, 2.0)
+    dist = random.uniform(min_dist, min_dist * 1.3)
+
+    # Random position on upper hemisphere
+    azimuth = random.uniform(0, 2 * np.pi)
+    elevation = random.uniform(np.deg2rad(20), np.deg2rad(80))
+
+    x = dist * np.cos(elevation) * np.cos(azimuth)
+    y = dist * np.cos(elevation) * np.sin(azimuth)
+    z = dist * np.sin(elevation)
+
+    cam_loc = centroid + np.array([x, y, z])
+
+    # Ensure camera is above floor
+    if cam_loc[2] < floor_height + 0.5:
+        cam_loc[2] = floor_height + 0.5
+
+    # Look at centroid
+    target = centroid
+
+    # Calculate orientation (Quaternion)
+    eye = Gf.Vec3d(cam_loc.tolist())
+    center = Gf.Vec3d(target.tolist())
+    up = Gf.Vec3d(0, 0, 1)
+
+    # Gf.Matrix4d().SetLookAt creates a view matrix (world to camera). We want camera to world.
+    m = Gf.Matrix4d().SetLookAt(eye, center, up)
+    m = m.GetInverse()
+
+    # Extract rotation
+    q = m.ExtractRotation().GetQuat()
+
+    # Set for all cameras
+    for cam_prim in cameras:
+        object_based_sdg_utils.set_transform_attributes(
+            cam_prim,
+            location=tuple(cam_loc),
+            orientation=Gf.Quatf(q)
+        )
+
+    print(f"[INFO] Camera updated to look at {target} from {cam_loc}")
 
 
 
@@ -234,7 +296,7 @@ spawn_max_z = floor_height + 1.50
 working_area_min = (min_x, min_y, spawn_min_z)
 working_area_max = (max_x, max_y, spawn_max_z)
 
-def build_mdl_material_library(stage, mdl_entries):
+def build_mdl_material_library(stage, mdl_entries, prefix="AssetMat"):
     """
     Given a list of dicts:
         [{ "mdl_url": "...", "subidentifier": "..." }, ...]
@@ -253,12 +315,14 @@ def build_mdl_material_library(stage, mdl_entries):
         if not subid:
             subid = mdl_url.split("/")[-1].replace(".mdl", "")
 
-        mtl_path = Sdf.Path(f"/World/Looks/AssetMat_{idx}")
+        mtl_path = Sdf.Path(f"/World/Looks/{prefix}_{idx}")
         mtl = UsdShade.Material.Define(stage, mtl_path)
         shader = UsdShade.Shader.Define(stage, mtl_path.AppendPath("Shader"))
         shader.CreateImplementationSourceAttr(UsdShade.Tokens.sourceAsset)
         shader.SetSourceAsset(mdl_url, "mdl")
         shader.SetSourceAssetSubIdentifier(subid, "mdl")
+        mtl.GetPrim().CreateAttribute("user:mdl_url", Sdf.ValueTypeNames.Asset).Set(mdl_url)
+        mtl.GetPrim().CreateAttribute("user:mdl_subidentifier", Sdf.ValueTypeNames.String).Set(subid)
 
         surf_out = mtl.CreateSurfaceOutput("mdl")
         surf_out.ConnectToSource(shader.ConnectableAPI(), "out")
@@ -279,6 +343,145 @@ def randomize_asset_materials(prims, materials):
         UsdShade.MaterialBindingAPI(prim).Bind(mat)
 
 
+def bind_material_to_meshes(root_prim, material):
+    """Bind a material to all mesh/gprim descendants of the given root."""
+    if material is None:
+        return
+    for desc in Usd.PrimRange(root_prim):
+        if desc.IsA(UsdGeom.Gprim):
+            UsdShade.MaterialBindingAPI(desc).Bind(material)
+
+
+def randomize_ground_plane_material(materials):
+    """Randomize material on the ground plane meshes."""
+    if not materials:
+        return
+    mat = random.choice(materials)
+    # Bind at root and all mesh descendants to ensure MDL sticks
+    UsdShade.MaterialBindingAPI(ground_plane_prim).Bind(mat)
+    bind_material_to_meshes(ground_plane_prim, mat)
+    mdl_url = mat.GetPrim().GetAttribute("user:mdl_url").Get()
+    subid = mat.GetPrim().GetAttribute("user:mdl_subidentifier").Get()
+    print(f"[SDG] GroundPlane material -> {subid} ({mdl_url})")
+
+
+def convert_coco_to_yolo_and_split(coco_root_path, yolo_root_path=None, train_ratio=0.8, seed=42):
+    """Convert COCO annotations to YOLO labels and split into train/val folders (no ultralytics dependency)."""
+
+    def _pick_coco_json(search_root: Path, preferred_stem: str = "coco_annotations"):
+        cand = []
+        for p in search_root.glob("*.json"):
+            cand.append(p)
+        rep_dir = search_root / "Replicator"
+        if rep_dir.exists():
+            cand.extend(rep_dir.glob("*.json"))
+        if not cand:
+            return None
+        def keyfunc(p):
+            stem_ok = p.stem.startswith(preferred_stem)
+            return (not stem_ok, -p.stat().st_size, -p.stat().st_mtime)
+        cand.sort(key=keyfunc)
+        return cand[0]
+
+    coco_root = Path(coco_root_path)
+    ann_path = None
+    if coco_root.exists():
+        ann_path = _pick_coco_json(coco_root)
+    if ann_path is None and coco_root.parent.exists():
+        siblings = sorted(coco_root.parent.glob(f"{coco_root.name}*"))
+        for sib in reversed(siblings):
+            ann_path = _pick_coco_json(sib)
+            if ann_path:
+                coco_root = sib
+                break
+    if ann_path is None:
+        print(f"[YOLO-CONVERT] No COCO json found under {coco_root_path} or siblings, skipping conversion.")
+        return
+
+    try:
+        with open(ann_path, "r") as f:
+            coco = json.load(f)
+    except Exception as exc:
+        print(f"[YOLO-CONVERT] Failed to read {ann_path}: {exc}")
+        return
+
+    images = coco.get("images", [])
+    annotations = coco.get("annotations", [])
+    categories = coco.get("categories", [])
+    if not images or not annotations or not categories:
+        print(f"[YOLO-CONVERT] Empty COCO annotations at {ann_path}, skipping.")
+        return
+
+    cat_id_to_yolo = {cat["id"]: idx for idx, cat in enumerate(categories)}
+    yolo_id_to_name = [cat.get("name", f"class_{i}") for i, cat in enumerate(categories)]
+
+    ann_by_image = {}
+    for ann in annotations:
+        img_id = ann.get("image_id")
+        ann_by_image.setdefault(img_id, []).append(ann)
+
+    # Deterministic split
+    yolo_root = Path(yolo_root_path) if yolo_root_path else coco_root
+    img_train_dir = yolo_root / "images" / "train"
+    img_val_dir = yolo_root / "images" / "val"
+    lbl_train_dir = yolo_root / "labels" / "train"
+    lbl_val_dir = yolo_root / "labels" / "val"
+    for d in [img_train_dir, img_val_dir, lbl_train_dir, lbl_val_dir]:
+        d.mkdir(parents=True, exist_ok=True)
+
+    rng = random.Random(seed if seed is not None else 42)
+    rng.shuffle(images)
+    n_total = len(images)
+    n_train = max(0, min(n_total, int(round(n_total * train_ratio))))
+    train_images = set(img.get("id") for img in images[:n_train])
+
+    for img in images:
+        file_name = img.get("file_name")
+        width = img.get("width", 1)
+        height = img.get("height", 1)
+        img_src = coco_root / file_name
+        anns = ann_by_image.get(img.get("id"), [])
+        yolo_lines = []
+        for ann in anns:
+            bbox = ann.get("bbox", [0, 0, 0, 0])
+            if len(bbox) != 4 or width <= 0 or height <= 0:
+                continue
+            x, y, w, h = bbox
+            cx = (x + w / 2) / width
+            cy = (y + h / 2) / height
+            nw = w / width
+            nh = h / height
+            cid = ann.get("category_id")
+            yid = cat_id_to_yolo.get(cid)
+            if yid is None:
+                continue
+            yolo_lines.append(f"{yid} {cx:.6f} {cy:.6f} {nw:.6f} {nh:.6f}")
+
+        if img.get("id") in train_images:
+            img_dst = img_train_dir / img_src.name
+            lbl_dst = lbl_train_dir / (img_src.stem + ".txt")
+        else:
+            img_dst = img_val_dir / img_src.name
+            lbl_dst = lbl_val_dir / (img_src.stem + ".txt")
+
+        if img_src.exists():
+            img_dst.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                img_dst.write_bytes(img_src.read_bytes())
+            except Exception as exc:
+                print(f"[YOLO-CONVERT] Failed to copy image {img_src} -> {img_dst}: {exc}")
+        lbl_dst.parent.mkdir(parents=True, exist_ok=True)
+        lbl_dst.write_text("\n".join(yolo_lines))
+
+    # data.yaml
+    data_yaml = yolo_root / "data.yaml"
+    names_lines = "\n".join([f"  {i}: {n}" for i, n in enumerate(yolo_id_to_name)])
+    data_yaml.write_text(
+        f"train: images/train\nval: images/val\nnc: {len(yolo_id_to_name)}\nnames:\n{names_lines}\n"
+    )
+    print(f"[YOLO-CONVERT] YOLO dataset at: {yolo_root}")
+
+
 # Create a collision box area around the assets to prevent them from drifting away
 object_based_sdg_utils.create_collision_box_walls(
     stage, "/World/CollisionWalls", working_area_size[0], working_area_size[1], working_area_size[2]
@@ -287,16 +490,49 @@ object_based_sdg_utils.create_collision_box_walls(
 # ---- FLOOR PLANE -------------------------------------------------
 # Use a physics-enabled ground plane instead of a flattened cube
 floor_height = -working_area_size[2] / 2.0  # bottom of the collision box
-ground_plane_size = max(working_area_size[0], working_area_size[1])
-ground_plane = GroundPlane(
-    prim_path="/World/groundPlane",
-    size=ground_plane_size,
-    color=np.array([0.5, 0.5, 0.5]),
-)
-# Align the ground plane with the bottom of the working area so falling assets land on it
-object_based_sdg_utils.set_transform_attributes(
-    stage.GetPrimAtPath("/World/groundPlane"), location=(0.0, 0.0, floor_height)
-)
+ground_plane_size = max(working_area_size[0], working_area_size[1]) * 4.0
+
+def create_ground_plane_mesh(stage, path, size, height):
+    """Create a simple quad mesh for the ground plane with UVs."""
+    mesh = UsdGeom.Mesh.Define(stage, path)
+    half_size = size / 2.0
+    
+    # Vertices for a quad
+    points = [
+        (-half_size, -half_size, 0),
+        (half_size, -half_size, 0),
+        (half_size, half_size, 0),
+        (-half_size, half_size, 0),
+    ]
+    mesh.CreatePointsAttr(points)
+    
+    # Face vertex counts (one face with 4 vertices)
+    mesh.CreateFaceVertexCountsAttr([4])
+    
+    # Face vertex indices
+    mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
+    
+    # Normals
+    mesh.CreateNormalsAttr([(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)])
+    
+    # Texture coordinates (UVs)
+    # Scale UVs to match the increased ground plane size (4x) to avoid stretched textures
+    uv_scale = 4.0
+    tex_coords = [(0, 0), (uv_scale, 0), (uv_scale, uv_scale), (0, uv_scale)]
+    primvars_api = UsdGeom.PrimvarsAPI(mesh)
+    pv = primvars_api.CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.vertex)
+    pv.Set(tex_coords)
+    
+    # Set transform
+    object_based_sdg_utils.set_transform_attributes(
+        mesh.GetPrim(), location=(0.0, 0.0, height)
+    )
+    
+    return mesh.GetPrim()
+
+ground_plane_prim = create_ground_plane_mesh(stage, "/World/groundPlane", ground_plane_size, floor_height)
+# Add collision
+object_based_sdg_utils.add_colliders(ground_plane_prim)
 # ------------------------------------------------------------------
 
 
@@ -344,14 +580,37 @@ def spawn_labeled_assets(max_label_types=None):
     else:
         chosen_objs = labeled_assets_and_properties
 
+    # Clustering logic: 50% chance to spawn in a tighter area for occlusions
+    use_clustering = random.random() < 0.5
+    if use_clustering:
+        # Define a smaller box within the working area (e.g., 40% of the size)
+        cluster_ratio = 0.4
+        area_w = max_x - min_x
+        area_h = max_y - min_y
+        cluster_w = area_w * cluster_ratio
+        cluster_h = area_h * cluster_ratio
+        
+        # Random center for the cluster
+        center_x = random.uniform(min_x + cluster_w/2, max_x - cluster_w/2)
+        center_y = random.uniform(min_y + cluster_h/2, max_y - cluster_h/2)
+        
+        spawn_min_x = center_x - cluster_w / 2
+        spawn_max_x = center_x + cluster_w / 2
+        spawn_min_y = center_y - cluster_h / 2
+        spawn_max_y = center_y + cluster_h / 2
+        print(f"[SDG] Spawning objects in a cluster at ({center_x:.2f}, {center_y:.2f})")
+    else:
+        spawn_min_x, spawn_max_x = min_x, max_x
+        spawn_min_y, spawn_max_y = min_y, max_y
+
     for obj in chosen_objs:
         obj_url = obj.get("url", "")
         label = obj.get("label", "unknown")
         count = obj.get("count", 1)
         for _ in range(count):
             rand_loc, rand_rot, _ = object_based_sdg_utils.get_random_transform_values(
-                loc_min=(min_x, min_y, drop_height_min),
-                loc_max=(max_x, max_y, drop_height_max),
+                loc_min=(spawn_min_x, spawn_min_y, drop_height_min),
+                loc_max=(spawn_max_x, spawn_max_y, drop_height_max),
                 scale_min_max=(1, 1),  # keep authored scale
             )
             prim_path = omni.usd.get_stage_next_free_path(stage, f"/World/Labeled/{label}", False)
@@ -583,36 +842,55 @@ with rep.trigger.on_custom_event(event_name="randomize_shape_distractor_colors")
         rep.randomizer.color(colors=rep.distribution.uniform((0, 0, 0), (1, 1, 1)))
 
 
-# Create a randomizer for lights in the working area, manually triggered at custom events
+# Create a randomizer for the lights, manually triggered at custom events
 with rep.trigger.on_custom_event(event_name="randomize_lights"):
-    lights = rep.create.light(
-        light_type="Sphere",
-        color=rep.distribution.uniform(LIGHT_SETTINGS["random_light_color_min"], LIGHT_SETTINGS["random_light_color_max"]),
-        temperature=rep.distribution.normal(
-            LIGHT_SETTINGS["random_light_temperature_mean"], LIGHT_SETTINGS["random_light_temperature_std"]
-        ),
-        intensity=rep.distribution.normal(
-            LIGHT_SETTINGS["random_light_intensity_mean"], LIGHT_SETTINGS["random_light_intensity_std"]
-        ),
-        position=rep.distribution.uniform(working_area_min, working_area_max),
-        # larger lights → softer shadows
-        scale=rep.distribution.uniform(0.3, 1.5),
-        count=LIGHT_SETTINGS["random_light_count"],
-    )
+    # Randomize Distant Light
+    distant_light_rep = rep.get.prims(path_pattern="/World/Lights/DistantLight")
+    with distant_light_rep:
+        # Constrain rotation to keep light coming from above (Y rotation 10-80 degrees, Z rotation 0-360)
+        rep.modify.pose(rotation=rep.distribution.uniform((0, 10, 0), (0, 80, 360)))
+        rep.randomizer.color(colors=rep.distribution.uniform(LIGHT_SETTINGS["random_light_color_min"], LIGHT_SETTINGS["random_light_color_max"]))
+        rep.modify.attribute("inputs:intensity", rep.distribution.normal(LIGHT_SETTINGS["random_light_intensity_mean"], LIGHT_SETTINGS["random_light_intensity_std"]))
+        rep.modify.attribute("inputs:colorTemperature", rep.distribution.normal(LIGHT_SETTINGS["random_light_temperature_mean"], LIGHT_SETTINGS["random_light_temperature_std"]))
+
+
+
 
 
 # Create a randomizer for the dome background, manually triggered at custom events
-with rep.trigger.on_custom_event(event_name="randomize_dome_background"):
-    dome_textures = [
-        assets_root_path + "/NVIDIA/Assets/Skies/Indoor/autoshop_01_4k.hdr",
-        assets_root_path + "/NVIDIA/Assets/Skies/Indoor/carpentry_shop_01_4k.hdr",
-        assets_root_path + "/NVIDIA/Assets/Skies/Indoor/hotel_room_4k.hdr",
-        assets_root_path + "/NVIDIA/Assets/Skies/Indoor/wooden_lounge_4k.hdr",
-    ]
-    dome_light = rep.create.light(light_type="Dome")
-    with dome_light:
-        rep.modify.attribute("inputs:texture:file", rep.distribution.choice(dome_textures))
-        rep.randomizer.rotation()
+dome_textures = [
+    assets_root_path + "/NVIDIA/Assets/Skies/Indoor/autoshop_01_4k.hdr",
+    assets_root_path + "/NVIDIA/Assets/Skies/Indoor/carpentry_shop_01_4k.hdr",
+    assets_root_path + "/NVIDIA/Assets/Skies/Indoor/hotel_room_4k.hdr",
+    assets_root_path + "/NVIDIA/Assets/Skies/Indoor/wooden_lounge_4k.hdr",
+]
+
+
+def randomize_dome_background():
+    tex = random.choice(dome_textures)
+    dome_path = "/World/DomeLight"
+    if not stage.GetPrimAtPath(dome_path).IsValid():
+        dome_light = UsdLux.DomeLight.Define(stage, dome_path)
+    else:
+        dome_light = UsdLux.DomeLight(stage.GetPrimAtPath(dome_path))
+    dome_light.CreateIntensityAttr().Set(1000.0)
+    dome_light.CreateTextureFileAttr().Set(Sdf.AssetPath(tex))
+    dome_light.CreateColorAttr().Set((1.0, 1.0, 1.0))
+    dome_light.CreateDiffuseAttr().Set(1.0)
+    dome_light.CreateSpecularAttr().Set(1.0)
+    dome_light.CreateTextureFormatAttr().Set("latlong")
+    # optional: random rotation
+    xformable = UsdGeom.Xformable(dome_light)
+    ops = xformable.GetOrderedXformOps()
+    rot_op = None
+    for op in ops:
+        if op.GetOpType() == UsdGeom.XformOp.TypeRotateZ:
+            rot_op = op
+            break
+    if rot_op is None:
+        rot_op = xformable.AddRotateZOp()
+    rot_op.Set(random.uniform(0, 360))
+    print(f"[SDG] Dome texture -> {tex}")
 
 
 # Capture motion blur by combining the number of pathtraced subframes samples simulated for the given duration
@@ -666,13 +944,15 @@ rt_subframes = config.get("rt_subframes", -1)
 
 # Initial trigger for randomizers before the SDG loop with several app updates (ensures materials/textures are loaded)
 rep.utils.send_og_event(event_name="randomize_shape_distractor_colors")
-rep.utils.send_og_event(event_name="randomize_dome_background")
+randomize_dome_background()
 for _ in range(5):
     simulation_app.update()
 
 # Build MDL materials from config for per-frame asset material randomization
 asset_mdl_entries = config.get("asset_mdl_materials", [])
-asset_mdl_materials = build_mdl_material_library(stage, asset_mdl_entries)
+asset_mdl_materials = build_mdl_material_library(stage, asset_mdl_entries, prefix="AssetMat")
+floor_mdl_entries = config.get("floor_mdl_materials", [])
+floor_mdl_materials = build_mdl_material_library(stage, floor_mdl_entries, prefix="FloorMat")
 
 # Set the timeline parameters (start, end, no looping) and start the timeline
 timeline = omni.timeline.get_timeline_interface()
@@ -688,7 +968,8 @@ simulation_app.update()
 wall_time_start = time.perf_counter()
 
 # Set camera once in a fixed top-down pose
-set_fixed_topdown_camera()
+# Set camera once in a fixed top-down pose (initial)
+update_camera_pose()
 # Run the simulation and capture data triggering randomizations and actions at custom frame intervals
 for i in range(num_frames):
     print(f"[SDG] Spawning and dropping labeled assets for frame {i}")
@@ -698,7 +979,10 @@ for i in range(num_frames):
     spawn_mesh_distractors()
     # Randomize MDL materials on labeled assets every frame
     randomize_asset_materials(labeled_prims, asset_mdl_materials)
-    wait_for_labeled_assets_to_settle(timeline)
+    randomize_ground_plane_material(floor_mdl_materials)
+    # Increase wait time and strictness to ensure objects are not floating
+    wait_for_labeled_assets_to_settle(timeline, max_duration=20.0, lin_thresh=0.005, ang_thresh=0.05)
+    update_camera_pose()
 
     # Randomize lights locations and colors
     if i % 5 == 0:
@@ -713,7 +997,7 @@ for i in range(num_frames):
     # Randomize the texture of the dome background
     if i % 25 == 0:
         print(f"\t Randomizing dome background")
-        rep.utils.send_og_event(event_name="randomize_dome_background")
+        randomize_dome_background()
 
     # Enable render products only at capture time
     if disable_render_products_between_captures:
@@ -732,6 +1016,13 @@ for i in range(num_frames):
 
 # Wait for the data to be written (default writer backends are asynchronous)
 rep.orchestrator.wait_until_complete()
+
+# Convert COCO output to YOLO format and split train/val if using CocoWriter
+yolo_output_dir = config.get("yolo_output_dir")
+yolo_split_ratio = config.get("yolo_split_ratio", 0.8)
+yolo_split_seed = config.get("yolo_split_seed", 42)
+if writer_type == "CocoWriter" and out_dir:
+    convert_coco_to_yolo_and_split(out_dir, yolo_output_dir, train_ratio=yolo_split_ratio, seed=yolo_split_seed)
 
 # Get the stats
 wall_duration = time.perf_counter() - wall_time_start
