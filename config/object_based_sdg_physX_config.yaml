@@ -1,12 +1,12 @@
 launch_config:
   renderer: RaytracedLighting
-  headless: false
+  headless: true
 env_url: ''
 working_area_size:
 - 5
 - 5
 - 1
-rt_subframes: 8
+rt_subframes: 16
 num_frames: 10
 num_cameras: 1
 disable_render_products_between_captures: false
@@ -20,14 +20,14 @@ camera_distance_to_target_min_max:
   - 10.00
 labeled_assets_and_properties:
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Angle.usd"
-  label: "sm_angle"
+  label: "angle_bracket"
   count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_ballstem.usd"
-  label: "sm_ballstem"
+  label: "ballstem"
   count: 3
   floating: true
   scale_min_max:
@@ -35,7 +35,7 @@ labeled_assets_and_properties:
   - 1.35
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Bilincs_Bilincs_003.usd"
-  label: "sm_bilincs_bilincs_003"
+  label: "u_bracket"
   count: 3
   floating: true
   scale_min_max:
@@ -43,7 +43,7 @@ labeled_assets_and_properties:
   - 1.35
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_body.usd"
-  label: "sm_body"
+  label: "body"
   count: 3
   floating: true
   scale_min_max:
@@ -51,7 +51,7 @@ labeled_assets_and_properties:
   - 1.35
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Bonnet.usd"
-  label: "sm_bonnet"
+  label: "bonnet"
   count: 3
   floating: true
   scale_min_max:
@@ -59,7 +59,7 @@ labeled_assets_and_properties:
   - 1.35
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Erveg2.usd"
-  label: "sm_erveg2"
+  label: "cable_shoe"
   count: 3
   floating: true
   scale_min_max:
@@ -67,7 +67,7 @@ labeled_assets_and_properties:
   - 1.35
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_handle.usd"
-  label: "sm_handle"
+  label: "handle"
   count: 3
   floating: true
   scale_min_max:
@@ -75,7 +75,7 @@ labeled_assets_and_properties:
   - 1.35
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Pipe_Clamp_25.usd"
-  label: "sm_pipe_clamp_25"
+  label: "pipe_clamp"
   count: 3
   floating: true
   scale_min_max:
@@ -83,7 +83,7 @@ labeled_assets_and_properties:
   - 1.35
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Rightangle2.usd"
-  label: "sm_rightangle2"
+  label: "l_bracket"
   count: 3
   floating: true
   scale_min_max:
@@ -91,7 +91,7 @@ labeled_assets_and_properties:
   - 1.35
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_seat.usd"
-  label: "sm_seat"
+  label: "seat"
   count: 3
   floating: true
   scale_min_max:
@@ -100,89 +100,78 @@ labeled_assets_and_properties:
 
 writer_type: CocoWriter
 writer_kwargs:
-  output_dir: "coco_physX"
+  output_dir: "coco_out"
   image_output_format: "jpg"
   semantic_types: ["class"]
   coco_categories:
-    sm_angle:
-      name: "sm_angle"
+    l_bracket:
+      name: "l_bracket"
       id: 1
       supercategory: "part"
       isthing: 1
-      color: [255, 0, 0]   # <- add a 3-element RGB list
-    sm_ballstem:
-      name: "sm_ballstem"
+      color: [255, 0, 0]  
+    u_bracket:
+      name: "u_bracket"
       id: 2
       supercategory: "part"
       isthing: 1
-      color: [0, 255, 0]
-    sm_bilincs_bilincs_003:
-      name: "sm_bilincs_bilincs_003"
+      color: [0, 0, 255]
+    angle_bracket:
+      name: "angle_bracket"
       id: 3
       supercategory: "part"
       isthing: 1
-      color: [0, 0, 255]
-    sm_body:
-      name: "sm_body"
+      color: [64, 192, 64]
+    seat:
+      name: "seat"
       id: 4
       supercategory: "part"
       isthing: 1
-      color: [255, 255, 0]
-
-    sm_bonnet:
-      name: "sm_bonnet"
+      color: [192, 64, 64]
+    pipe_clamp:
+      name: "pipe_clamp"
       id: 5
       supercategory: "part"
       isthing: 1
-      color: [255, 0, 255]
-
-    sm_erveg2:
-      name: "sm_erveg2"
+      color: [128, 0, 255]
+    handle:
+      name: "handle"
       id: 6
       supercategory: "part"
       isthing: 1
-      color: [0, 255, 255]
-
-    sm_handle:
-      name: "sm_handle"
+      color: [255, 128, 0]
+    bonnet:
+      name: "bonnet"
       id: 7
       supercategory: "part"
       isthing: 1
-      color: [255, 128, 0]
-
-    sm_pipe_clamp_25:
-      name: "sm_pipe_clamp_25"
+      color: [255, 0, 255]
+    body:
+      name: "body"
       id: 8
       supercategory: "part"
       isthing: 1
-      color: [128, 0, 255]
-
-    sm_rightangle2:
-      name: "sm_rightangle2"
+      color: [255, 255, 0]
+    ballstem:
+      name: "ballstem"
       id: 9
       supercategory: "part"
       isthing: 1
-      color: [64, 192, 64]
-
-    sm_seat:
-      name: "sm_seat"
+      color: [0, 255, 0]
+    cable_shoe:
+      name: "cable_shoe"
       id: 10
       supercategory: "part"
       isthing: 1
-      color: [192, 64, 64]
+      color: [0, 255, 255]
 yolo_split_ratio: 0.8
 yolo_split_seed: null
 yolo_output_dir: "yolo_out"
-shape_distractors_types:
-- capsule
-- cone
-- cylinder
-- sphere
-- cube
+
 shape_distractors_scale_min_max:
   - 0.015
   - 0.15
-shape_distractors_num: 10
+shape_distractors_num: 2
 mesh_distractors_urls:
 - omniverse://localhost/Library/Roboforge_collections/Distractors/0.usdc
 - omniverse://localhost/Library/Roboforge_collections/Distractors/1.usdc
@@ -200,12 +189,8 @@ mesh_distractors_num: 10
 floor_mdl_materials:
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Masonry/Facade_Brick_Red_Clinker.mdl"
     subidentifier: "Facade_Brick_Red_Clinker" 
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Mesh/Metal_Mesh_Weave_03.mdl"
-    subidentifier: "Metal_Mesh_Weave_03"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Mesh/Metal_Mesh_Weave_02.mdl"
-    subidentifier: "Metal_Mesh_Weave_02"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Mesh/Metal_Mesh_Weave_01.mdl"
-    subidentifier: "Metal_Mesh_Weave_01"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Leather/ABS_Quilted_Leather.mdl"
+    subidentifier: "ABS_Quilted_Leather"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Aluminum_Knurling.mdl"
     subidentifier: "Aluminum_Knurling"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Copper_Knurling.mdl"
@@ -218,10 +203,10 @@ floor_mdl_materials:
     subidentifier: "Cardboard"
 
 asset_mdl_materials:
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Copper_Brushed.mdl"
-    subidentifier: "Copper_Brushed"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Composite/Carbon_Fiber.mdl"
-    subidentifier: "Carbon_Fiber"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Hammer_Paint.mdl"
+    subidentifier: "Hammer_Paint"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Wood/Wood_Tiles_Poplar_Multicolor.mdl"
+    subidentifier: "Wood_Tiles_Poplar_Multicolor"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Aluminum_Anodized.mdl"
     subidentifier: "Aluminum_Anodized"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Carpaint/Carpaint_Candy.mdl"
@@ -230,13 +215,11 @@ asset_mdl_materials:
     subidentifier: "Steel_Painted"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Chalk_Paint_Pebbles.mdl"
     subidentifier: "Chalk_Paint_Pebbles"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Carpaint/Effect_Pigment_Metallic.mdl"
-    subidentifier: "Effect_Pigment_Metallic"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Wood/Wood_Tiles_Walnut_Multicolor.mdl"
+    subidentifier: "Wood_Tiles_Walnut_Multicolor"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Carpaint/Carpaint_Metallic.mdl"
     subidentifier: "Carpaint_Metallic"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Chromium.mdl"
-    subidentifier: "Chromium"
+  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Ground/Ground_Hard_Court.mdl"
+    subidentifier: "Ground_Hard_Court"
   - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Aluminum_Knurling.mdl"
     subidentifier: "Aluminum_Knurling"
-  - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Iron_Hammered.mdl"
-    subidentifier: "Iron_Hammered"
