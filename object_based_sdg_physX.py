@@ -8,6 +8,7 @@ import random
 import time
 from itertools import chain
 from pathlib import Path
+import re
 
 import carb
 import carb.settings
@@ -118,14 +119,20 @@ stage = omni.usd.get_context().get_stage()
 
 # Settings for the lights
 LIGHT_SETTINGS = {
-    "distant_intensity": 1000,
+    # Standard Mode (Day)
+    "distant_intensity": 500.0,
+    "dome_intensity": 500.0,
+    
+    # Dark Mode (Night)
+    "dark_mode_spot_intensity": 60000.0,
+    "dark_mode_spot_cone_angle": 20.0,
+    "dark_mode_spot_radius": 3.0,
+
+    # Randomization (Subtle color/temp changes only, intensity fixed to standard)
     "random_light_color_min": (0.9, 0.9, 0.9),
     "random_light_color_max": (1.0, 1.0, 1.0),
     "random_light_temperature_mean": 6500,
     "random_light_temperature_std": 500,
-    "random_light_intensity_mean": 1000,
-    "random_light_intensity_std": 500,
-    "random_light_count": 3,
 }
 
 # Create a "Distant Light" (like the sun)
@@ -137,6 +144,34 @@ distant_light.CreateAttribute("inputs:angle", Sdf.ValueTypeNames.Float).Set(0.5)
 if not distant_light.HasAttribute("xformOp:rotateXYZ"):
     UsdGeom.Xformable(distant_light).AddRotateXYZOp()
 distant_light.GetAttribute("xformOp:rotateXYZ").Set((0, 0, 0))
+
+# Create a Spot Light (DiskLight with Shaping API)
+# It will be enabled only during "Dark Mode" frames
+spot_light_path = "/World/Lights/SpotLight"
+spot_light = UsdLux.DiskLight.Define(stage, spot_light_path)
+spot_light.CreateIntensityAttr().Set(0.0) # Disabled by default
+spot_light.CreateRadiusAttr().Set(LIGHT_SETTINGS.get("dark_mode_spot_radius", 1.5)) # Larger radius for soft shadows (like a studio softbox)
+spot_light.CreateColorAttr().Set((1.0, 1.0, 1.0))
+
+# Position above center
+if not spot_light.GetPrim().HasAttribute("xformOp:translate"):
+    UsdGeom.Xformable(spot_light).AddTranslateOp()
+spot_light.GetPrim().GetAttribute("xformOp:translate").Set((0.0, 0.0, 8.0))
+
+# Apply Shaping API to make it a spot light
+# Note: In some USD versions UsdLux.ShapingAPI might be different, but this is standard
+try:
+    shaping_api = UsdLux.ShapingAPI.Apply(spot_light.GetPrim())
+    shaping_api.CreateShapingConeAngleAttr().Set(LIGHT_SETTINGS.get("dark_mode_spot_cone_angle", 35.0)) # Narrow cone
+    shaping_api.CreateShapingConeSoftnessAttr().Set(0.2)
+    shaping_api.CreateShapingFocusAttr().Set(10.0)
+    
+    # Rotate to point down
+    if not spot_light.GetPrim().HasAttribute("xformOp:rotateXYZ"):
+        UsdGeom.Xformable(spot_light).AddRotateXYZOp()
+    spot_light.GetPrim().GetAttribute("xformOp:rotateXYZ").Set((0, 0, 0))
+except Exception as e:
+    print(f"[SDG] Warning: Could not apply ShapingAPI to SpotLight: {e}")
 
 # ---------------------------------------------------------------------------
 # 5. WORKSPACE SETUP (Floor & Walls)
@@ -189,7 +224,8 @@ def create_ground_plane_mesh(stage, path, size, height):
     return mesh.GetPrim()
 
 ground_plane_prim = create_ground_plane_mesh(stage, "/World/groundPlane", ground_plane_size, floor_height)
-object_based_sdg_utils.add_colliders(ground_plane_prim)
+# Use exact mesh collision for the floor and negative rest offset to ensure assets settle flush (no floating gap)
+object_based_sdg_utils.add_colliders(ground_plane_prim, approximation_shape="none", rest_offset=-0.002)
 
 # Setup Physics (Gravity, Time steps)
 usdrt_stage = usdrt.Usd.Stage.Attach(omni.usd.get_context().get_stage_id())
@@ -228,8 +264,8 @@ def spawn_labeled_assets(assets_to_spawn=None):
     chosen_objs = assets_to_spawn if assets_to_spawn else labeled_assets_and_properties
 
     # Spawn them in a small area at the center so they pile up
-    spawn_width = 0.6
-    spawn_height = 0.6
+    spawn_width = 1.0
+    spawn_height = 1.0
     spawn_min_x, spawn_max_x = -spawn_width/2, spawn_width/2
     spawn_min_y, spawn_max_y = -spawn_height/2, spawn_height/2
     print(f"[SDG] Spawning objects at center with spread {spawn_width}x{spawn_height}")
@@ -523,42 +559,57 @@ if writer_type is not None and len(render_products) > 0:
     writer.initialize(**writer_kwargs)
     writer.attach(render_products)
 
-# Fixed Camera Positions
-FIXED_CAMERA_LOCATIONS = [
-    np.array([1.08742078, 0.67294805, 11.09511810]),
-    np.array([0.60574200, -1.67747342, 12.26323287]),
-    np.array([0.38147009, -2.83058122, 9.72091382]),
-    np.array([0.31645009, 1.03971338, 7.00043459]),
-    np.array([-0.92077174, -2.90120761, 10.54236711]),
-    np.array([0.11700979, -0.71766488, 8.96512512]),
-    np.array([-1.44621206, 0.96357478, 7.71141473]),
-    np.array([0.21770771, 1.17613525, 8.72339810]),
-]
+    print(f"[INFO] Randomly updated {len(cameras)} cameras.")
 
 def update_camera_pose(frame_idx=0):
-    """Moves the camera to the next fixed position."""
+    """Moves the cameras to 4 corners to avoid similar frames."""
     if not labeled_prims:
         return
 
-    target = np.array([0.0, 0.0, -0.5])
-    cam_loc = FIXED_CAMERA_LOCATIONS[frame_idx % len(FIXED_CAMERA_LOCATIONS)]
+    # Configuration for randomization
+    dist_min, dist_max = config.get("camera_distance_to_target_min_max", (5.0, 10.0))
+    target = np.array([0.0, 0.0, -0.5]) # Looking at floor center
+    
+    # Define base angles for 4 corners (45, 135, 225, 315 degrees)
+    quarter_pi = np.pi / 4
+    base_angles = [1 * quarter_pi, 3 * quarter_pi, 5 * quarter_pi, 7 * quarter_pi]
 
-    # Calculate rotation to look at target
-    eye = Gf.Vec3d(cam_loc.tolist())
-    center = Gf.Vec3d(target.tolist())
-    up = Gf.Vec3d(0, 0, 1)
+    for i, cam_prim in enumerate(cameras):
+        # Assign each camera to a corner sequentially
+        # If more than 4 cameras, it wraps around
+        corner_idx = i % 4
+        base_angle = base_angles[corner_idx]
+        
+        # Add slight randomness to the angle (+/- 15 degrees) so it's not perfectly identical every frame
+        angle_jitter = random.uniform(-np.radians(15), np.radians(15))
+        azimuth = base_angle + angle_jitter
 
-    m = Gf.Matrix4d().SetLookAt(eye, center, up)
-    m = m.GetInverse()
-    q = m.ExtractRotation().GetQuat()
+        # Elevation: high angle look-down
+        elevation = random.uniform(np.radians(60), np.radians(80))
+        distance = random.uniform(dist_min, dist_max)
 
-    for cam_prim in cameras:
+        # Spherical to Cartesian
+        x = distance * np.cos(azimuth) * np.cos(elevation)
+        y = distance * np.sin(azimuth) * np.cos(elevation)
+        z = distance * np.sin(elevation)
+        
+        cam_loc = np.array([x, y, z]) + target
+
+        # Calculate rotation to look at target
+        eye = Gf.Vec3d(cam_loc.tolist())
+        center = Gf.Vec3d(target.tolist())
+        up = Gf.Vec3d(0, 0, 1)
+
+        m = Gf.Matrix4d().SetLookAt(eye, center, up)
+        m = m.GetInverse()
+        q = m.ExtractRotation().GetQuat()
+
         object_based_sdg_utils.set_transform_attributes(
             cam_prim,
             location=tuple(cam_loc),
             orientation=Gf.Quatf(q)
         )
-    print(f"[INFO] Camera updated to look at {target} from {cam_loc}")
+    print(f"[INFO] Updated {len(cameras)} cameras to 4 corners.")
 
 # ---------------------------------------------------------------------------
 # 10. RANDOMIZERS (Dome, Lights, Colors)
@@ -577,7 +628,7 @@ with rep.trigger.on_custom_event(event_name="randomize_lights"):
     with distant_light_rep:
         # Note: Rotation randomization removed to keep light fixed from top
         rep.randomizer.color(colors=rep.distribution.uniform(LIGHT_SETTINGS["random_light_color_min"], LIGHT_SETTINGS["random_light_color_max"]))
-        rep.modify.attribute("inputs:intensity", rep.distribution.normal(LIGHT_SETTINGS["random_light_intensity_mean"], LIGHT_SETTINGS["random_light_intensity_std"]))
+        rep.modify.attribute("inputs:intensity", LIGHT_SETTINGS["distant_intensity"])
         rep.modify.attribute("inputs:colorTemperature", rep.distribution.normal(LIGHT_SETTINGS["random_light_temperature_mean"], LIGHT_SETTINGS["random_light_temperature_std"]))
         rep.modify.attribute("inputs:angle", rep.distribution.uniform(0.1, 1.5))
 
@@ -594,7 +645,7 @@ def randomize_dome_background():
     else:
         dome_light = UsdLux.DomeLight(stage.GetPrimAtPath(dome_path))
         
-    dome_light.CreateIntensityAttr().Set(200.0)
+    dome_light.CreateIntensityAttr().Set(LIGHT_SETTINGS["dome_intensity"])
     dome_light.CreateTextureFileAttr().Set(Sdf.AssetPath(tex))
     dome_light.CreateColorAttr().Set((1.0, 1.0, 1.0))
     dome_light.CreateTextureFormatAttr().Set("latlong")
@@ -660,7 +711,6 @@ rt_subframes = config.get("rt_subframes", -1)
 disable_render_products_between_captures = config.get("disable_render_products_between_captures", True)
 
 # Initial setup
-import re # Added import here as it was missing in the original location I removed
 rep.utils.send_og_event(event_name="randomize_shape_distractor_colors")
 randomize_dome_background()
 for _ in range(5):
@@ -671,6 +721,10 @@ asset_mdl_entries = config.get("asset_mdl_materials", [])
 asset_mdl_materials = build_mdl_material_library(stage, asset_mdl_entries, prefix="AssetMat")
 floor_mdl_entries = config.get("floor_mdl_materials", [])
 floor_mdl_materials = build_mdl_material_library(stage, floor_mdl_entries, prefix="FloorMat")
+
+# Load Dark Mode Material (Tire)
+dark_mode_entries = [{"mdl_url": "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Other/Rubber/Tire.mdl"}]
+dark_mode_materials = build_mdl_material_library(stage, dark_mode_entries, prefix="DarkGroundMat")
 
 # Start timeline
 timeline = omni.timeline.get_timeline_interface()
@@ -695,6 +749,9 @@ asset_deck_ptr = 0
 for i in range(num_frames):
     print(f"[SDG] Spawning and dropping labeled assets for frame {i}")
     
+    # Check for Dark Mode early
+    is_dark_mode = (i % 4 == 0)
+    
     # Select up to 7 assets in a balanced way
     current_batch_assets = []
     if len(labeled_assets_and_properties) <= 7:
@@ -718,7 +775,11 @@ for i in range(num_frames):
     
     # Randomize materials
     randomize_asset_materials(labeled_prims, asset_mdl_materials)
-    randomize_ground_plane_material(floor_mdl_materials)
+    
+    if is_dark_mode and dark_mode_materials:
+        randomize_ground_plane_material(dark_mode_materials)
+    else:
+        randomize_ground_plane_material(floor_mdl_materials)
     
     # Wait for things to fall and settle
     wait_for_labeled_assets_to_settle(timeline, max_duration=5.0, lin_thresh=0.15, ang_thresh=0.15, check_interval=5)
@@ -740,12 +801,53 @@ for i in range(num_frames):
         randomize_dome_background()
 
     # Randomly turn off dome light for variety
+    # Determine if this frame is distinct "Dark Mode" (25% of frames)
+    # e.g. every 4th frame (0, 4, 8, 12...)
+    # is_dark_mode already calculated at top of loop
+
+    # Randomly turn off dome light for variety (Normal Mode only)
+    # If Dark Mode, we force it off later
+    current_dome_intensity = LIGHT_SETTINGS["dome_intensity"]
     if stage.GetPrimAtPath("/World/DomeLight").IsValid():
         dome_light = UsdLux.DomeLight(stage.GetPrimAtPath("/World/DomeLight"))
-        if random.random() < 0.3:
-            dome_light.GetIntensityAttr().Set(0.0)
-        else:
-            dome_light.GetIntensityAttr().Set(200.0)
+        if not is_dark_mode:
+            # User request: In normal mode, remove all lights except dome and distant.
+            # Set Dome Light to a good value (LIGHT_SETTINGS value).
+            dome_light.GetIntensityAttr().Set(LIGHT_SETTINGS["dome_intensity"])
+
+    # --- APPLY LIGHTING MODES ---
+    if is_dark_mode:
+        print(f"\t [Dark Mode] Frame {i}: Activating SpotLight only.")
+        # Disable Dome
+        if stage.GetPrimAtPath("/World/DomeLight").IsValid():
+             UsdLux.DomeLight(stage.GetPrimAtPath("/World/DomeLight")).GetIntensityAttr().Set(0.0)
+        
+        # Disable Distant Light
+        if stage.GetPrimAtPath("/World/Lights/DistantLight").IsValid():
+            UsdLux.DistantLight(stage.GetPrimAtPath("/World/Lights/DistantLight")).GetIntensityAttr().Set(0.0)
+
+        # Enable Spot Light
+        if stage.GetPrimAtPath(spot_light_path).IsValid():
+             # High intensity for the spot since it's the only source
+             UsdLux.DiskLight(stage.GetPrimAtPath(spot_light_path)).GetIntensityAttr().Set(LIGHT_SETTINGS["dark_mode_spot_intensity"]) 
+
+    else:
+        # Normal Mode: Ensure standard lights are ON (or restored to random values)
+        # Note: randomize_lights event (triggered above) sets intensity for DistantLight, so we don't force it here
+        # unless we need to recover from 0. However, Replicator randomization applies per frame or when triggered.
+        # Since we triggered it at i%5==0, the value persists until next trigger.
+        # If previous frame was Dark Mode, we might need to restore DistantLight.
+        
+        # Restore Spot Light to OFF
+        if stage.GetPrimAtPath(spot_light_path).IsValid():
+             UsdLux.DiskLight(stage.GetPrimAtPath(spot_light_path)).GetIntensityAttr().Set(0.0)
+
+        # Ensure DistantLight is set to its good value
+        if stage.GetPrimAtPath("/World/Lights/DistantLight").IsValid():
+            d_light = UsdLux.DistantLight(stage.GetPrimAtPath("/World/Lights/DistantLight"))
+            d_light.GetIntensityAttr().Set(LIGHT_SETTINGS["distant_intensity"]) 
+             
+        # Dome light was handled above
 
     # Capture!
     print(f"[SDG] Capturing frame {i}/{num_frames}, at simulation time: {timeline.get_current_time():.2f}")
@@ -759,6 +861,7 @@ for i in range(num_frames):
 
     if disable_render_products_between_captures:
         object_based_sdg_utils.set_render_products_updates(render_products, False, include_viewport=False)
+    print(f"[SDG] Finished frame {i}")
 
 # Finish up
 rep.orchestrator.wait_until_complete()

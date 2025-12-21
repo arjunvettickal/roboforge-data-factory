@@ -41,7 +41,7 @@ def set_transform_attributes(prim, location=None, orientation=None, rotation=Non
 
 
 # Enables collisions with the asset (without rigid body dynamics the asset will be static)
-def add_colliders(root_prim):
+def add_colliders(root_prim, contact_offset=0.001, rest_offset=0.0, approximation_shape="convexHull"):
     # Iterate descendant prims (including root) and add colliders to mesh or primitive types
     for desc_prim in Usd.PrimRange(root_prim):
         if desc_prim.IsA(UsdGeom.Mesh) or desc_prim.IsA(UsdGeom.Gprim):
@@ -57,8 +57,8 @@ def add_colliders(root_prim):
             else:
                 physx_collision_api = PhysxSchema.PhysxCollisionAPI(desc_prim)
             # Set PhysX specific properties
-            physx_collision_api.CreateContactOffsetAttr(0.001)
-            physx_collision_api.CreateRestOffsetAttr(0.0)
+            physx_collision_api.CreateContactOffsetAttr(contact_offset)
+            physx_collision_api.CreateRestOffsetAttr(rest_offset)
 
         # Add mesh specific collision properties only to mesh types
         if desc_prim.IsA(UsdGeom.Mesh):
@@ -67,7 +67,7 @@ def add_colliders(root_prim):
                 mesh_collision_api = UsdPhysics.MeshCollisionAPI.Apply(desc_prim)
             else:
                 mesh_collision_api = UsdPhysics.MeshCollisionAPI(desc_prim)
-            mesh_collision_api.CreateApproximationAttr().Set("convexHull")
+            mesh_collision_api.CreateApproximationAttr().Set(approximation_shape)
 
 
 # Check if prim (or its descendants) has colliders
@@ -101,9 +101,9 @@ def add_rigid_body_dynamics(prim, disable_gravity=False, angular_damping=None):
 
 # Add dynamics properties to the prim (if mesh or primitive) (rigid body to root + colliders to the meshes)
 # https://docs.omniverse.nvidia.com/extensions/latest/ext_physics/rigid-bodies.html#rigid-body-simulation
-def add_colliders_and_rigid_body_dynamics(prim, disable_gravity=False):
+def add_colliders_and_rigid_body_dynamics(prim, disable_gravity=False, contact_offset=0.001, rest_offset=0.0, approximation_shape="convexHull"):
     # Add colliders to mesh or primitive types of the descendants of the prim (including root)
-    add_colliders(prim)
+    add_colliders(prim, contact_offset=contact_offset, rest_offset=rest_offset, approximation_shape=approximation_shape)
     # Add rigid body dynamics properties (to the root only) only if it has colliders
     add_rigid_body_dynamics(prim, disable_gravity=disable_gravity)
 
@@ -177,6 +177,18 @@ def get_random_pose_on_sphere(origin, radius, camera_forward_axis=(0, 0, -1)):
 # Enable or disable the render products and viewport rendering
 def set_render_products_updates(render_products, enabled, include_viewport=False):
     for rp in render_products:
-        rp.hydra_texture.set_updates_enabled(enabled)
+        try:
+            if hasattr(rp, "hydra_texture") and rp.hydra_texture:
+                rp.hydra_texture.set_updates_enabled(enabled)
+            elif hasattr(rp, "set_updates_enabled"):
+                rp.set_updates_enabled(enabled)
+        except Exception as e:
+            print(f"[SDG-UTILS] Warning: Could not set updates for render product: {e}")
+            
     if include_viewport:
-        get_active_viewport().updates_enabled = enabled
+        try:
+            viewport = get_active_viewport()
+            if viewport:
+                viewport.updates_enabled = enabled
+        except Exception as e:
+            print(f"[SDG-UTILS] Warning: Could not set updates for viewport: {e}")
