@@ -19,7 +19,7 @@ It supports:
   Simulates objects falling and settling on a floor for realistic pile-ups, including a specialized **"Dark Mode"** with spot lighting.
 
 - **Minimalist** (`object_based_sdg_min.py`)  
-  A streamlined version for quick testing and lightweight deployments.
+  A streamlined version for quick testing and lightweight deployments (under development).
 
 ### Dynamic Randomization
 - Automatic swapping of floor textures and USD environments  
