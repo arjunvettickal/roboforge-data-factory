@@ -79,11 +79,12 @@ Run the SDG pipeline by specifying a configuration file.
 **Pose-based generation:**
 ```bash
 python object_based_sdg.py --config config/object_based_sdg_config.yaml
-Physics-based generation (object dropping):
 
+**Physics-based generation (object dropping):**
+```bash
 python object_based_sdg_physX.py --config config/object_based_sdg_physX_config.yaml
 
-2) Training a Model
+### 2) Training a Model
 
 After generation + YOLO conversion (usually in yolo_out/), run:
 
