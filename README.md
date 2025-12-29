@@ -87,9 +87,9 @@ python object_based_sdg_physX.py --config config/object_based_sdg_physX_config.y
 ### 2) Training a Model
 
 After generation + YOLO conversion (usually in yolo_out/), run:
-
+```bash
 python train_script.py yolo_out --model yolov8n.pt
-
+```
 
 Training outputs will be saved under:
 ```bash
