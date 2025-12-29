@@ -79,11 +79,11 @@ Run the SDG pipeline by specifying a configuration file.
 **Pose-based generation:**
 ```bash
 python object_based_sdg.py --config config/object_based_sdg_config.yaml
-
+```
 **Physics-based generation (object dropping):**
 ```bash
 python object_based_sdg_physX.py --config config/object_based_sdg_physX_config.yaml
-
+```
 ### 2) Training a Model
 
 After generation + YOLO conversion (usually in yolo_out/), run:
@@ -92,10 +92,10 @@ python train_script.py yolo_out --model yolov8n.pt
 
 
 Training outputs will be saved under:
-
+```bash
 yolo_out/runs/
-
- Configuration
+```
+## Configuration
 
 The pipeline is modular via YAML files in config/. You can customize:
 
@@ -107,6 +107,6 @@ asset_mdl_materials: Library of MDL materials randomly applied to assets
 
 Writer settings: Output directory, image resolution, subframe counts for raytracing
 
-📝 License
+## License
 
 This project is licensed under the Apache License, Version 2.0.
