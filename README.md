@@ -9,7 +9,7 @@ It supports:
 
 ---
 
-## 🚀 Features
+##  Features
 
 ### Multi-Mode SDG
 - **Pose-Based** (`object_based_sdg.py`)  
@@ -35,7 +35,7 @@ It supports:
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 | Path | Description |
 |------|-------------|
@@ -49,7 +49,7 @@ It supports:
 
 ---
 
-## 🛠️ Setup & Requirements
+##  Setup & Requirements
 
 ### NVIDIA Isaac Sim
 - Ensure a working installation of **Isaac Sim** (**v4.0+ recommended**).
@@ -70,7 +70,7 @@ Make sure:
 
 ---
 
-## 📖 Usage
+##  Usage
 
 ### 1) Generating Data
 
@@ -94,7 +94,7 @@ Training outputs will be saved under:
 
 yolo_out/runs/
 
-⚙️ Configuration
+ Configuration
 
 The pipeline is modular via YAML files in config/. You can customize:
 
