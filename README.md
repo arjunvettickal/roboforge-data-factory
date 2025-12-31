@@ -245,27 +245,27 @@ Typical knobs you can tune:
 
 This repo includes additional documentation pages to take you from SDG → training → evaluation → deployment:
 
--Train the model on generated datasets: (link)
+-**Train the model on generated datasets: (link)**
 
--Validate & improve YOLO via structured ablation + logging: (link)
+-**Validate & improve YOLO via structured ablation + logging: (link)**
 
--Deployment strategies for real-world robotics: (link)
+-**Deployment strategies for real-world robotics: (link)**
 
--Further learning / reference links: (link)
+-**Further learning / reference links: (link)**
 ---
 ## References & Disclaimer
 ### Foundation tutorials (NVIDIA)
 
 This pipeline is based on NVIDIA’s official Replicator / Isaac Sim tutorial:
 
--“Object Based Synthetic Data Generation” (foundation for SDG workflow):
+-**“Object Based Synthetic Data Generation” (foundation for SDG workflow):**
 https://docs.isaacsim.omniverse.nvidia.com/
 ---
 ### YOLO writer note
 
 A YOLO format writer was developed following NVIDIA Omniverse documentation on creating custom writers:
 
--Custom writer reference (Omniverse Replicator docs):
+-**Custom writer reference (Omniverse Replicator docs):**
 https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/custom_writer.html
 
 **This repo’s YOLO output pipeline follows the official writer patterns and adapts them for YOLO directory/layout + annotation formatting.**
@@ -276,12 +276,12 @@ Apache License, Version 2.0
 
 This project builds upon official NVIDIA Omniverse and Isaac Sim resources:
 
-- Isaac Sim Installation Documentation:  
+- **Isaac Sim Installation Documentation:**
   https://docs.isaacsim.omniverse.nvidia.com/
 
-- Omniverse Replicator – Object-Based Synthetic Dataset Generation:  
+- **Omniverse Replicator – Object-Based Synthetic Dataset Generation:**
   https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/tutorials.html
 
-- Omniverse Replicator Custom Writer Documentation:  
+- **Omniverse Replicator Custom Writer Documentation:**
   https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/custom_writer.html
 ---
