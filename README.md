@@ -1,5 +1,5 @@
 # RoboForge Data Factory
-*A customizable Isaac Sim + Omniverse Replicator pipeline for robotics-oriented object detection (COCO + YOLO).*
+*A customizable Synthetic Data Generation pipeline for physical .*
 
 RoboForge Data Factory is a synthetic data generation (SDG) pipeline built on **NVIDIA Isaac Sim** and **Omniverse Replicator** to generate photorealistic images and annotations for **object detection** (and optionally pose-centric workflows) in robotics / industrial scenes.
 
@@ -102,7 +102,7 @@ pip install -r requirements.txt
 If you’re on Isaac Sim 4.x, use ```bash python=3.10. ```
 
 Note: Running Replicator standalone scripts still typically works best via Isaac Sim’s ```bash python.sh/python.bat ```(Option A). Many users keep Conda mainly for training/analysis, and use Isaac Sim’s Python for SDG.
-
+---
 ## Getting Started (Recommended Tutorial: Public Dataset)
 
 The fastest way to confirm your setup is to start with the public dataset included in this repository (recommended tutorial workflow), then switch to your own assets.
@@ -149,6 +149,7 @@ yolo_out/
 ```bash
 ./python.sh train_script.py yolo_out --model yolov8n.pt
 ```
+---
 ## Customize Assets (Replace Default URLs)
 
 Once the public dataset tutorial works end-to-end, switch to your own assets.
@@ -197,6 +198,7 @@ Follow this guide for replacing the default URLs with your own asset URLs (local
 ```bash
 ./python.sh object_based_sdg_min.py --config config/object_based_sdg_min_config.yaml
 ```
+---
 ## Configuration
 
 Configs live in config/ and are designed to be the main customization surface.
@@ -238,7 +240,7 @@ Typical knobs you can tune:
   -**drop height, settle time, friction/restition, rigid body parameters**
 
   -**“Dark Mode” lighting (if using PhysX script)**
-
+---
 ## Training, Validation, Deployment (Docs)
 
 This repo includes additional documentation pages to take you from SDG → training → evaluation → deployment:
@@ -250,7 +252,7 @@ This repo includes additional documentation pages to take you from SDG → train
 -Deployment strategies for real-world robotics: (link)
 
 -Further learning / reference links: (link)
-
+---
 ## References & Disclaimer
 ### Foundation tutorials (NVIDIA)
 
@@ -258,7 +260,7 @@ This pipeline is based on NVIDIA’s official Replicator / Isaac Sim tutorial:
 
 -“Object Based Synthetic Data Generation” (foundation for SDG workflow):
 https://docs.isaacsim.omniverse.nvidia.com/
-
+---
 ### YOLO writer note
 
 A YOLO format writer was developed following NVIDIA Omniverse documentation on creating custom writers:
@@ -267,11 +269,19 @@ A YOLO format writer was developed following NVIDIA Omniverse documentation on c
 https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/custom_writer.html
 
 **This repo’s YOLO output pipeline follows the official writer patterns and adapts them for YOLO directory/layout + annotation formatting.**
-
+---
 ## License
 
 Apache License, Version 2.0
 
+This project builds upon official NVIDIA Omniverse and Isaac Sim resources:
 
-Built on your repo’s current README baseline :contentReference[oaicite:0]{index=0}, plus NVIDIA’s Isaac Sim installation docs :contentReference[oaicite:1]{index=1}, the official “Object Based Synthetic Dataset Generation” Replicator tutorial :contentReference[oaicite:2]{index=2}, and Omniverse Replicator’s custom writer documentation :contentReference[oaicite:3]{index=3}. For Python-version matching guidance across Isaac Sim major versions, see Isaac Lab’s installation notes (it mirrors Isaac Sim’s Python coupling) :contentReference[oaicite:4]{index=4}.
-::contentReference[oaicite:5]{index=5}
+- Isaac Sim Installation Documentation:  
+  https://docs.isaacsim.omniverse.nvidia.com/
+
+- Omniverse Replicator – Object-Based Synthetic Dataset Generation:  
+  https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/tutorials.html
+
+- Omniverse Replicator Custom Writer Documentation:  
+  https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/custom_writer.html
+---
