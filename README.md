@@ -219,56 +219,58 @@ Typical knobs you can tune:
 
 - **Scene layout**
 
-  -**working_area_size / spawn bounds**
+  - **working_area_size / spawn bounds**
 
-  -**collision walls / floor plane**
+  - **collision walls / floor plane**
 
-  -**number of distractors, clutter level**
+  - **number of distractors, clutter level**
 
--**Domain randomization**
+- **Domain randomization**
 
-  -**lighting (dome, key/fill, spot)**
+  - **lighting (dome, key/fill, spot)**
 
-  -**camera pose jitter, focal length/DoF (if enabled)**
+  - **camera pose jitter, focal length/DoF (if enabled)**
 
-  -**materials (MDL libraries), texture swaps**
+  - **materials (MDL libraries), texture swaps**
 
-  -**environment/background USD swapping**
+  - **environment/background USD swapping**
 
--**Physics**
+- **Physics**
 
-  -**drop height, settle time, friction/restition, rigid body parameters**
+  - **drop height, settle time, friction/restition, rigid body parameters**
 
-  -**“Dark Mode” lighting (if using PhysX script)**
+  - **“Dark Mode” lighting (if using PhysX script)**
 ---
 ## Training, Validation, Deployment (Docs)
 
 This repo includes additional documentation pages to take you from SDG → training → evaluation → deployment:
 
--**Train the model on generated datasets: (link)**
+- **Train the model on generated datasets: (link)**
 
--**Validate & improve YOLO via structured ablation + logging: (link)**
+- **Validate & improve YOLO via structured ablation + logging: (link)**
 
--**Deployment strategies for real-world robotics: (link)**
+- **Deployment strategies for real-world robotics: (link)**
 
--**Further learning / reference links: (link)**
+- **Further learning / reference links: (link)**
 ---
 ## References & Disclaimer
 ### Foundation tutorials (NVIDIA)
 
 This pipeline is based on NVIDIA’s official Replicator / Isaac Sim tutorial:
 
--**“Object Based Synthetic Data Generation” (foundation for SDG workflow):**
+- **“Object Based Synthetic Data Generation” (foundation for SDG workflow):**
 https://docs.isaacsim.omniverse.nvidia.com/
 ---
 ### YOLO writer note
 
 A YOLO format writer was developed following NVIDIA Omniverse documentation on creating custom writers:
 
--**Custom writer reference (Omniverse Replicator docs):**
+- **Custom writer reference (Omniverse Replicator docs):**
 https://docs.omniverse.nvidia.com/extensions/latest/ext_replicator/custom_writer.html
 
-**This repo’s YOLO output pipeline follows the official writer patterns and adapts them for YOLO directory/layout + annotation formatting.**
+This repo’s YOLO output pipeline follows the official writer patterns and adapts them for YOLO directory/layout + annotation formatting.
+
+
 ---
 ## License
 
