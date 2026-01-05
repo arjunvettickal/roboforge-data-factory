@@ -54,14 +54,21 @@ It supports:
 ## Prerequisites
 
 ### 1) Install NVIDIA Isaac Sim
-Install Isaac Sim for your platform (Windows/Linux, workstation/container, etc.):
+Install Isaac Sim for your platform (Windows/Linux, workstation/container, etc.):[Nvidia Omniverse Isaac-Sim](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/index.html)
 
-- Isaac Sim Installation Docs: [Nvidia Omniverse Isaac-Sim](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/index.html)
-
-> **Tip:** Cloning this repo *inside your Isaac Sim install directory* makes it easier to run scripts using Isaac Sim’s bundled Python.
 
 ### 2) Install Conda (recommended)
 Install **Miniconda** or **Anaconda** for environment management:[Miniconda](https://docs.conda.io/en/latest/miniconda.html)
+
+- **Open your Anaconda Prompt CLI or Conda as interpreter in your IDE (VS Code)**
+  
+```bash
+# Isaac Sim 5.x example (Python 3.11)
+conda create -n roboforge-sdg python=3.11 -y
+conda activate roboforge-sdg
+```
+
+If you’re on Isaac Sim 4.x, use ```bash python=3.10. ```
 
 ### 3) Python version must match Isaac Sim
 Isaac Sim is built against a specific Python version. Make sure your environment matches your Isaac Sim major version:
@@ -74,60 +81,58 @@ Isaac Sim is built against a specific Python version. Make sure your environment
 
 ## Installation & Environment
 
-### Option A (Recommended): Run with Isaac Sim’s bundled Python
-This is the least painful path for Replicator pipelines.
 
-1) **Clone this repo**  
-(see [next section](#1-clone-the-repo-preferred-inside-isaac-sim-install-folder))
+### 1) Clone the repo
 
-
-### Conda environment (useful for training / tooling)
-
-Create a conda env that matches your Isaac Sim Python version, then install repo deps:
-```bash
-# Isaac Sim 5.x example (Python 3.11)
-conda create -n roboforge-sdg python=3.11 -y
-conda activate roboforge-sdg
-pip install -r requirements.txt
-```
-
-If you’re on Isaac Sim 4.x, use ```bash python=3.10. ```
-
-Note: Running Replicator standalone scripts still typically works best via Isaac Sim’s ```bash python.sh/python.bat ```. Many users keep Conda mainly for training/analysis, and use Isaac Sim’s Python for SDG.
----
-## Getting Started (Recommended Tutorial: Public Dataset)
-
-The fastest way to confirm your setup is to start with the public dataset included in this repository (recommended tutorial workflow), then switch to your own assets.
-
-### 1) Clone the repo (Preferred: inside Isaac Sim install folder)
+> **Tip:** Cloning this repo *inside your Isaac Sim install directory* makes it easier to run scripts using Isaac Sim’s bundled Python.
 
 Preferred
 ```bash
 # Example: go to your Isaac Sim install root
 cd <PATH_TO_ISAAC_SIM_INSTALL>
 git clone <YOUR_REPO_URL> roboforge-data-factory
-cd roboforge-data-factory
 ```
 Alternative (any location)
 ```bash
 git clone <YOUR_REPO_URL>
 cd <REPO_FOLDER>
 ```
-### 2) Find the public dataset config
+### 2) Installing deps for conda env from "requirements.txt"
+```bash
+cd <REPO_FOLDER>
+conda activate roboforge-sdg
+pip install -r requirements.txt
+```
 
-Locate the included public dataset config in```bash config/```(look for something like *public*dataset*.yaml) and use it as your baseline tutorial config.
+Note: Running Replicator standalone scripts still typically works best via Isaac Sim’s ```bash python.sh/python.bat ```. Many users keep Conda mainly for training/analysis, and use Isaac Sim’s Python for SDG.
 
-### 3) Run a small test generation
+---
+
+## Getting Started (Recommended Tutorial: Public Dataset)
+
+The fastest way to confirm your setup is to start with the public dataset included in this repository (recommended tutorial workflow), then switch to your own assets.
+
+
+(WP- Content: Calling assets within the pipeline from the repo folder/nucleus)
+
+
+
+### 1) Run a small test generation
+
+Make sure you are in the isaac-sim installation folder or else
+```bash
+cd <PATH_TO_ISAAC_SIM_INSTALL>
+```
 ```bash
 # Pose-based
-./python.sh object_based_sdg.py --config config/<PUBLIC_DATASET_CONFIG>.yaml
+./python.bat roboforge-data-factory/object_based_sdg.py --config roboforge-data-factory/config/object_based_sdg_config.yaml
 
-# Physics-based (optional)
-./python.sh object_based_sdg_physX.py --config config/<PUBLIC_DATASET_PHYSX_CONFIG>.yaml
+# Physics-based
+./python.bat roboforge-data-factory/object_based_sdg_physX.py --config roboforge-data-factory/config/object_based_sdg_physX_config.yaml
 ```
 ### 4) Verify outputs
 
-By default, outputs typically land under something like:
+By default, outputs typically land under something like (within Isaac sim installation folder):
 
 ```bash
 coco_out/ 
