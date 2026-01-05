@@ -56,13 +56,12 @@ It supports:
 ### 1) Install NVIDIA Isaac Sim
 Install Isaac Sim for your platform (Windows/Linux, workstation/container, etc.):
 
-- Isaac Sim Installation Docs: [Nvidia Omniverse Isaac-Sim](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/index.html) (navigate to **Installation**)
+- Isaac Sim Installation Docs: [Nvidia Omniverse Isaac-Sim](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/index.html)
 
 > **Tip:** Cloning this repo *inside your Isaac Sim install directory* makes it easier to run scripts using Isaac Sim’s bundled Python.
 
 ### 2) Install Conda (recommended)
-Install **Miniconda** or **Anaconda** for environment management:
-- Miniconda: https://docs.conda.io/en/latest/miniconda.html
+Install **Miniconda** or **Anaconda** for environment management:[Miniconda](https://docs.conda.io/en/latest/miniconda.html)
 
 ### 3) Python version must match Isaac Sim
 Isaac Sim is built against a specific Python version. Make sure your environment matches your Isaac Sim major version:
@@ -78,18 +77,11 @@ Isaac Sim is built against a specific Python version. Make sure your environment
 ### Option A (Recommended): Run with Isaac Sim’s bundled Python
 This is the least painful path for Replicator pipelines.
 
-1) **Clone this repo** (see next section)
-2) Install Python deps into Isaac Sim’s Python:
-```bash
-# From your Isaac Sim install root (where python.sh/python.bat lives)
-./python.sh -m pip install -r requirements.txt
-```
+1) **Clone this repo**  
+(see [next section](#1-clone-the-repo-preferred-inside-isaac-sim-install-folder))
 
-Windows users typically run:
-```bash
-python.bat -m pip install -r requirements.txt
-```
-### Option B: Conda environment (useful for training / tooling)
+
+### Conda environment (useful for training / tooling)
 
 Create a conda env that matches your Isaac Sim Python version, then install repo deps:
 ```bash
@@ -101,7 +93,7 @@ pip install -r requirements.txt
 
 If you’re on Isaac Sim 4.x, use ```bash python=3.10. ```
 
-Note: Running Replicator standalone scripts still typically works best via Isaac Sim’s ```bash python.sh/python.bat ```(Option A). Many users keep Conda mainly for training/analysis, and use Isaac Sim’s Python for SDG.
+Note: Running Replicator standalone scripts still typically works best via Isaac Sim’s ```bash python.sh/python.bat ```. Many users keep Conda mainly for training/analysis, and use Isaac Sim’s Python for SDG.
 ---
 ## Getting Started (Recommended Tutorial: Public Dataset)
 
