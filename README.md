@@ -122,7 +122,7 @@ cd <PATH_TO_ISAAC_SIM_INSTALL>
 
 Update Output directory
 
-Edit `yolo_out_dir` in `obj_based_sdg_physX_config.yaml ` or `obj_based_sdg_config.yaml` with `<PATH_TO_ISAAC_SIM_INSTALL>`
+Edit `yolo_out_dir` in `obj_based_sdg_physX_config.yaml ` or `obj_based_sdg_config.yaml` with `<PATH_TO_ISAAC_SIM_INSTALL>/yolo_out`
 
 By default coco output is saved within the isaac sim installation folder
 
