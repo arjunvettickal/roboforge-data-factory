@@ -56,7 +56,7 @@ It supports:
 ### 1) Install NVIDIA Isaac Sim
 Install Isaac Sim for your platform (Windows/Linux, workstation/container, etc.):
 
-- Isaac Sim Installation Docs: [https://docs.isaacsim.omniverse.nvidia.com/](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/index.html) (navigate to **Installation**)
+- Isaac Sim Installation Docs: [Nvidia Omniverse Isaac-Sim](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/index.html) (navigate to **Installation**)
 
 > **Tip:** Cloning this repo *inside your Isaac Sim install directory* makes it easier to run scripts using Isaac Sim’s bundled Python.
 
