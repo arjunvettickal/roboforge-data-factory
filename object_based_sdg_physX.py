@@ -9,6 +9,7 @@ import time
 from itertools import chain
 from pathlib import Path
 import re
+import math
 
 import carb
 import carb.settings
@@ -379,7 +380,7 @@ for i in range(shape_distractors_num):
 # Mesh Distractors (Complex 3D models)
 mesh_distractors_urls = config.get("mesh_distractors_urls", [])
 mesh_distractors_scale_min_max = config.get("mesh_distractors_scale_min_max", (0.1, 2.0))
-mesh_distractors_num = config.get("mesh_distractors_num", 20)
+mesh_distractors_num = config.get("mesh_distractors_num", 0)
 mesh_distractors = []
 
 def clear_mesh_distractors():
@@ -746,32 +747,80 @@ random.shuffle(all_asset_indices)
 asset_deck_ptr = 0
 
 # Loop through frames
+# Loop through frames
+# --- CONFIG: Frame Types (Normal, Distractors Only, Empty) ---
+FRAME_TYPE_NORMAL = 0
+FRAME_TYPE_DISTRACTORS_ONLY = 1  # 3% of frames
+FRAME_TYPE_EMPTY = 2             # 2% of frames
+
+count_dist_only = math.ceil(num_frames * 0.03)
+count_empty = math.ceil(num_frames * 0.02)
+count_normal = max(0, num_frames - count_dist_only - count_empty)
+
+print(f"[SDG] Frame Distribution: Normal={count_normal}, DistOnly={count_dist_only}, Empty={count_empty}")
+
+# Ensure we have exact number of frames
+# (If rounding errors occur, just append/trim to num_frames, though with 1000 it is exact)
+frame_types = [FRAME_TYPE_NORMAL] * count_normal + \
+              [FRAME_TYPE_DISTRACTORS_ONLY] * count_dist_only + \
+              [FRAME_TYPE_EMPTY] * count_empty
+
+if len(frame_types) < num_frames:
+    frame_types.extend([FRAME_TYPE_NORMAL] * (num_frames - len(frame_types)))
+elif len(frame_types) > num_frames:
+    frame_types = frame_types[:num_frames]
+
+random.shuffle(frame_types)
+
 for i in range(num_frames):
-    print(f"[SDG] Spawning and dropping labeled assets for frame {i}")
+    current_frame_type = frame_types[i]
+    print(f"[SDG] Frame {i}: Type {current_frame_type} (0=Norm, 1=DistOnly, 2=Empty)")
     
     # Check for Dark Mode early
     is_dark_mode = (i % 4 == 0)
     
-    # Select up to 7 assets in a balanced way
-    current_batch_assets = []
-    if len(labeled_assets_and_properties) <= 7:
-        current_batch_assets = labeled_assets_and_properties
-    else:
-        selected_indices = []
-        while len(selected_indices) < 7:
-            needed = 7 - len(selected_indices)
-            available = len(all_asset_indices) - asset_deck_ptr
-            take = min(needed, available)
-            selected_indices.extend(all_asset_indices[asset_deck_ptr : asset_deck_ptr + take])
-            asset_deck_ptr += take
-            if asset_deck_ptr >= len(all_asset_indices):
-                random.shuffle(all_asset_indices)
-                asset_deck_ptr = 0
-        current_batch_assets = [labeled_assets_and_properties[idx] for idx in selected_indices]
+    # --- 1. HANDLE LABELED ASSETS ---
+    if current_frame_type == FRAME_TYPE_NORMAL:
+        # Select up to 7 assets in a balanced way
+        current_batch_assets = []
+        if len(labeled_assets_and_properties) <= 7:
+            current_batch_assets = labeled_assets_and_properties
+        else:
+            selected_indices = []
+            while len(selected_indices) < 7:
+                needed = 7 - len(selected_indices)
+                available = len(all_asset_indices) - asset_deck_ptr
+                take = min(needed, available)
+                selected_indices.extend(all_asset_indices[asset_deck_ptr : asset_deck_ptr + take])
+                asset_deck_ptr += take
+                if asset_deck_ptr >= len(all_asset_indices):
+                    random.shuffle(all_asset_indices)
+                    asset_deck_ptr = 0
+            current_batch_assets = [labeled_assets_and_properties[idx] for idx in selected_indices]
 
-    # Spawn assets and distractors
-    spawn_labeled_assets(assets_to_spawn=current_batch_assets)
-    spawn_mesh_distractors()
+        # Spawn assets
+        spawn_labeled_assets(assets_to_spawn=current_batch_assets)
+    else:
+        # Distractors Only or Empty -> Clear labeled assets
+        clear_labeled_assets()
+
+    # --- 2. HANDLE MESH DISTRACTORS ---
+    if current_frame_type == FRAME_TYPE_EMPTY:
+        clear_mesh_distractors()
+    else:
+        # Normal or Distractors Only -> Spawn Mesh Distractors
+        spawn_mesh_distractors()
+
+    # --- 3. HANDLE SHAPE DISTRACTORS (Visibility) ---
+    # Shape distractors are persistent rigid bodies under /World/Distractors.
+    # We toggle the visibility of the parent group.
+    distractors_prim = stage.GetPrimAtPath("/World/Distractors")
+    if distractors_prim.IsValid():
+        img = UsdGeom.Imageable(distractors_prim)
+        if current_frame_type == FRAME_TYPE_EMPTY:
+            img.MakeInvisible()
+        else:
+            img.MakeVisible()
     
     # Randomize materials
     randomize_asset_materials(labeled_prims, asset_mdl_materials)

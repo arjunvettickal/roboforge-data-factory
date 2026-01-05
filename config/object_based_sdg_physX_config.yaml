@@ -19,7 +19,7 @@ camera_distance_to_target_min_max:
   - 12.00
   - 16.00
 labeled_assets_and_properties:
-- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Angle.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Rightangle2.usd"
   label: "angle_bracket"
   count: 3
   floating: true
@@ -82,7 +82,7 @@ labeled_assets_and_properties:
   - 0.85
   - 1.35
 
-- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Rightangle2.usd"
+- url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Angle.usd"
   label: "l_bracket"
   count: 3
   floating: true
