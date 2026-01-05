@@ -68,7 +68,7 @@ conda create -n roboforge-sdg python=3.11 -y
 conda activate roboforge-sdg
 ```
 
-If you’re on Isaac Sim 4.x, use ```bash python=3.10. ```
+If you’re on Isaac Sim 4.x, use `python=3.10.`
 
 ### 3) Python version must match Isaac Sim
 Isaac Sim is built against a specific Python version. Make sure your environment matches your Isaac Sim major version:
@@ -112,22 +112,25 @@ Note: Running Replicator standalone scripts still typically works best via Isaac
 
 The fastest way to confirm your setup is to start with the public dataset included in this repository (recommended tutorial workflow), then switch to your own assets.
 
-
-(WP- Content: Calling assets within the pipeline from the repo folder/nucleus)
-
-
-
 ### 1) Run a small test generation
 
 Make sure you are in the isaac-sim installation folder or else
 ```bash
 cd <PATH_TO_ISAAC_SIM_INSTALL>
 ```
+(WP- Content: Update/Calling assets within the pipeline from the repo folder/nucleus)
+
+Update Output directory
+
+Edit `yolo_out_dir` in `obj_based_sdg_physX_config.yaml ` or `obj_based_sdg_config.yaml` with `<PATH_TO_ISAAC_SIM_INSTALL>`
+
+By default coco output is saved within the isaac sim installation folder
+
 ```bash
-# Pose-based
+# Pose-based Synthetic Data Generation
 ./python.bat roboforge-data-factory/object_based_sdg.py --config roboforge-data-factory/config/object_based_sdg_config.yaml
 
-# Physics-based
+# Physics-based Synthetic Data Generation
 ./python.bat roboforge-data-factory/object_based_sdg_physX.py --config roboforge-data-factory/config/object_based_sdg_physX_config.yaml
 ```
 ### 4) Verify outputs
