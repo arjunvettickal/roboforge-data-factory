@@ -1,5 +1,5 @@
 # RoboForge Data Factory
-*A customizable Synthetic Data Generation pipeline for physical .*
+*A customizable Synthetic Data Generation pipeline for physical AI.*
 
 ![RoboForge Data Factory Demo](demo.gif.gif)
 <p align="center">
