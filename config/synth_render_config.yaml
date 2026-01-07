@@ -1,0 +1,161 @@
+launch_config:
+  renderer: RaytracedLighting
+  headless: false
+
+env_url: ''
+working_area_size: [5, 5, 5]
+rt_subframes: 60
+num_frames: 10
+disable_render_products_between_captures: false
+simulation_duration_between_captures: 0.15
+resolution: [720, 720]
+
+# Frame Generation Probabilities
+# They should sum to <= 1.0. The remainder will be "Standard" frames.
+probabilities:
+  ground_plane_only: 0.08  # 5-10% requested. Using 8%.
+  dark_mode: 0.25          # 25% requested.
+
+# Asset Loading Settings
+# It is not strict that every frame should consist of all labeled assets.
+# We will randomize the count per frame.
+assets:
+  min_types_per_frame: 3
+  max_types_per_frame: 8  # Don't spawn all 10 types every time
+
+labeled_assets:
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Rightangle2.usd"
+    label: "angle_bracket"
+    count: 2
+    scale_min_max: [0.85, 1.35]
+
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_ballstem.usd"
+    label: "ballstem"
+    count: 2
+    scale_min_max: [0.85, 1.35]
+
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Bilincs_Bilincs_003.usd"
+    label: "u_bracket"
+    count: 2
+    scale_min_max: [0.85, 1.35]
+
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_body.usd"
+    label: "body"
+    count: 2
+    scale_min_max: [0.85, 1.35]
+
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Bonnet.usd"
+    label: "bonnet"
+    count: 2
+    scale_min_max: [0.85, 1.35]
+
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Erveg2.usd"
+    label: "cable_shoe"
+    count: 2
+    scale_min_max: [0.85, 1.35]
+
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_handle.usd"
+    label: "handle"
+    count: 2
+    scale_min_max: [0.85, 1.35]
+
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Pipe_Clamp_25.usd"
+    label: "pipe_clamp"
+    count: 2
+    scale_min_max: [0.85, 1.35]
+
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Angle.usd"
+    label: "l_bracket"
+    count: 2
+    scale_min_max: [0.85, 1.35]
+
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_seat.usd"
+    label: "seat"
+    count: 2
+    scale_min_max: [0.85, 1.35]
+
+distractors:
+  shape_distractors_num: 2
+  shape_distractors_scale_min_max: [0.015, 0.15]
+  
+  mesh_distractors_num: 10
+  mesh_distractors_scale_min_max: [0.35, 1.35]
+  mesh_distractors_urls:
+    - omniverse://localhost/Library/Roboforge_collections/Distractors/0.usdc
+    - omniverse://localhost/Library/Roboforge_collections/Distractors/1.usdc
+    - omniverse://localhost/Library/Roboforge_collections/Distractors/2.usdc
+    - omniverse://localhost/Library/Roboforge_collections/Distractors/3.usdc
+    - omniverse://localhost/Library/Roboforge_collections/Distractors/6.usdc
+    - omniverse://localhost/Library/Roboforge_collections/Distractors/7.usdc
+    - omniverse://localhost/Library/Roboforge_collections/Distractors/8.usdc
+    - omniverse://localhost/Library/Roboforge_collections/Distractors/9.usdc
+
+materials:
+  floor:
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Masonry/Facade_Brick_Red_Clinker.mdl"
+      subidentifier: "Facade_Brick_Red_Clinker"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Leather/ABS_Quilted_Leather.mdl"
+      subidentifier: "ABS_Quilted_Leather"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Plaster/Facade_Plaster_Rough.mdl"
+      subidentifier: "Facade_Plaster_Rough"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paper/Cardboard.mdl"
+      subidentifier: "Cardboard"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Leather/Suede_Leather.mdl"
+      subidentifier: "Suede_Leather"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Chromium_Knurling.mdl"
+      subidentifier: "Chromium_Knurling"
+
+  assets:
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Hammer_Paint.mdl"
+      subidentifier: "Hammer_Paint"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Wood/Wood_Tiles_Poplar_Multicolor.mdl"
+      subidentifier: "Wood_Tiles_Poplar_Multicolor"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Aluminum_Anodized.mdl"
+      subidentifier: "Aluminum_Anodized"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Carpaint/Carpaint_Candy.mdl"
+      subidentifier: "Carpaint_Candy"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Steel_Painted.mdl"
+      subidentifier: "Steel_Painted"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Chalk_Paint_Pebbles.mdl"
+      subidentifier: "Chalk_Paint_Pebbles"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Wood/Wood_Tiles_Walnut_Multicolor.mdl"
+      subidentifier: "Wood_Tiles_Walnut_Multicolor"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Carpaint/Carpaint_Metallic.mdl"
+      subidentifier: "Carpaint_Metallic"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Ground/Ground_Hard_Court.mdl"
+      subidentifier: "Ground_Hard_Court"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Leather/Semi_Aniline_Leather.mdl"
+      subidentifier: "Semi_Aniline_Leather"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Chromium_Scratched.mdl"
+      subidentifier: "Chromium_Scratched"
+
+input_camera:
+  distance_min_max: [10.0, 16.0]
+
+light_settings:
+  standard:
+    distant_intensity: 500.0
+    dome_intensity: 500.0
+  dark_mode:
+    spot_intensity: 60000.0
+writer_type: CocoWriter
+writer_kwargs:
+  output_dir: "synth_render_out"
+  image_output_format: "jpg"
+  rgb: true
+  semantic_types: ["class"]
+  coco_categories:
+    l_bracket: {id: 1, name: "l_bracket", supercategory: "part", isthing: 1, color: [255, 0, 0]}
+    u_bracket: {id: 2, name: "u_bracket", supercategory: "part", isthing: 1, color: [0, 0, 255]}
+    angle_bracket: {id: 3, name: "angle_bracket", supercategory: "part", isthing: 1, color: [64, 192, 64]}
+    seat: {id: 4, name: "seat", supercategory: "part", isthing: 1, color: [192, 64, 64]}
+    pipe_clamp: {id: 5, name: "pipe_clamp", supercategory: "part", isthing: 1, color: [128, 0, 255]}
+    handle: {id: 6, name: "handle", supercategory: "part", isthing: 1, color: [255, 128, 0]}
+    bonnet: {id: 7, name: "bonnet", supercategory: "part", isthing: 1, color: [255, 0, 255]}
+    body: {id: 8, name: "body", supercategory: "part", isthing: 1, color: [255, 255, 0]}
+    ballstem: {id: 9, name: "ballstem", supercategory: "part", isthing: 1, color: [0, 255, 0]}
+    cable_shoe: {id: 10, name: "cable_shoe", supercategory: "part", isthing: 1, color: [0, 255, 255]}
+
+yolo_output_dir: "yolo_out"
+yolo_split_ratio: 0.8
+yolo_split_seed: null

@@ -134,6 +134,11 @@ LIGHT_SETTINGS = {
     "random_light_color_max": (1.0, 1.0, 1.0),
     "random_light_temperature_mean": 6500,
     "random_light_temperature_std": 500,
+
+    # Side Light (Soft Shadow)
+    "side_light_intensity": 35000.0,
+    "side_light_radius": 2.5, # Large radius = Soft shadows
+    "side_light_position": (-5.0, 2.0, 6.0), # High up on one side
 }
 
 # Create a "Distant Light" (like the sun)
@@ -173,6 +178,32 @@ try:
     spot_light.GetPrim().GetAttribute("xformOp:rotateXYZ").Set((0, 0, 0))
 except Exception as e:
     print(f"[SDG] Warning: Could not apply ShapingAPI to SpotLight: {e}")
+
+# Create a "Side Light" (DiskLight) for soft shadows
+side_light_path = "/World/Lights/SideLight"
+side_light = UsdLux.DiskLight.Define(stage, side_light_path)
+side_light.CreateIntensityAttr().Set(LIGHT_SETTINGS["side_light_intensity"])
+side_light.CreateRadiusAttr().Set(LIGHT_SETTINGS["side_light_radius"])
+side_light.CreateColorAttr().Set((1.0, 0.98, 0.95)) # Warm tint
+
+# Position and orient the Side Light to look at center
+side_pos = LIGHT_SETTINGS["side_light_position"]
+side_target = (0, 0, 0)
+
+# Calculate rotation
+sl_eye = Gf.Vec3d(side_pos)
+sl_center = Gf.Vec3d(side_target)
+sl_up = Gf.Vec3d(0, 0, 1)
+
+sl_m = Gf.Matrix4d().SetLookAt(sl_eye, sl_center, sl_up)
+sl_m = sl_m.GetInverse() # Camera -> World
+sl_q = sl_m.ExtractRotation().GetQuat()
+
+object_based_sdg_utils.set_transform_attributes(
+    side_light.GetPrim(),
+    location=side_pos,
+    orientation=Gf.Quatf(sl_q)
+)
 
 # ---------------------------------------------------------------------------
 # 5. WORKSPACE SETUP (Floor & Walls)
@@ -297,6 +328,9 @@ def spawn_labeled_assets(assets_to_spawn=None):
             
             # Add semantic label (for training)
             add_labels(prim, labels=[label], instance_name="class")
+
+            # Store label for material grouping
+            prim.CreateAttribute("user:asset_group_label", Sdf.ValueTypeNames.String).Set(label)
             
             # Reset velocity
             if prim.HasAttribute("physics:velocity"):
@@ -473,17 +507,38 @@ def build_mdl_material_library(stage, mdl_entries, prefix="AssetMat"):
     return materials
 
 def randomize_asset_materials(prims, materials):
-    """Applies random materials to objects."""
+    """Applies random materials to objects, grouping by type."""
     if not materials:
         return
+
+    # Group prims by their asset label
+    groups = {}
+    for prim in prims:
+        label = "unknown"
+        if prim.HasAttribute("user:asset_group_label"):
+            label = prim.GetAttribute("user:asset_group_label").Get()
+        else:
+            # Fallback (should not happen for labeled assets)
+            label = prim.GetName().split("_")[0]
+
+        if label not in groups:
+            groups[label] = []
+        groups[label].append(prim)
+
+    # Assign a unique material to each group
+    unique_labels = list(groups.keys())
     
-    # Shuffle the materials to ensure variety
+    # Shuffle materials to ensure random selection
     pool = materials[:]
     random.shuffle(pool)
 
-    for i, prim in enumerate(prims):
+    for i, label in enumerate(unique_labels):
+        # Pick a material, ensuring uniqueness if possible
         mat = pool[i % len(pool)]
-        UsdShade.MaterialBindingAPI(prim).Bind(mat)
+        
+        # Assign this same material to all instances of this type
+        for prim in groups[label]:
+            UsdShade.MaterialBindingAPI(prim).Bind(mat)
 
 def bind_material_to_meshes(root_prim, material):
     """Helper to apply material to all parts of an object."""
@@ -880,6 +935,10 @@ for i in range(num_frames):
              # High intensity for the spot since it's the only source
              UsdLux.DiskLight(stage.GetPrimAtPath(spot_light_path)).GetIntensityAttr().Set(LIGHT_SETTINGS["dark_mode_spot_intensity"]) 
 
+        # Disable Side Light
+        if stage.GetPrimAtPath(side_light_path).IsValid():
+             UsdLux.DiskLight(stage.GetPrimAtPath(side_light_path)).GetIntensityAttr().Set(0.0) 
+
     else:
         # Normal Mode: Ensure standard lights are ON (or restored to random values)
         # Note: randomize_lights event (triggered above) sets intensity for DistantLight, so we don't force it here
@@ -895,6 +954,10 @@ for i in range(num_frames):
         if stage.GetPrimAtPath("/World/Lights/DistantLight").IsValid():
             d_light = UsdLux.DistantLight(stage.GetPrimAtPath("/World/Lights/DistantLight"))
             d_light.GetIntensityAttr().Set(LIGHT_SETTINGS["distant_intensity"]) 
+             
+        # Enable Side Light
+        if stage.GetPrimAtPath(side_light_path).IsValid():
+             UsdLux.DiskLight(stage.GetPrimAtPath(side_light_path)).GetIntensityAttr().Set(LIGHT_SETTINGS["side_light_intensity"]) 
              
         # Dome light was handled above
 
