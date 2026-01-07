@@ -1,7 +1,7 @@
 # RoboForge Data Factory
 *A customizable Synthetic Data Generation pipeline for physical .*
 
-![RoboForge Data Factory Demo](assets/demo.gif)
+![RoboForge Data Factory Demo](demo.gif.gif)
 <p align="center">
   <img src="assets/demo.gif" alt="RoboForge Data Factory Demo" width="800"/>
 </p>
