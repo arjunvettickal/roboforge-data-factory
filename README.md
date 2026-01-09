@@ -1,5 +1,10 @@
 # RoboForge Data Factory
-*A customizable Synthetic Data Generation pipeline for physical .*
+*A customizable Synthetic Data Generation pipeline for physical AI.*
+
+![RoboForge Data Factory Demo](demo.gif.gif)
+<p align="center">
+  <img src="assets/demo.gif" alt="RoboForge Data Factory Demo" width="400"/>
+</p>
 
 RoboForge Data Factory is a synthetic data generation (SDG) pipeline built on **NVIDIA Isaac Sim** and **Omniverse Replicator** to generate photorealistic images and annotations for **object detection** (and optionally pose-centric workflows) in robotics / industrial scenes.
 
