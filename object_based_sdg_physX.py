@@ -533,12 +533,48 @@ def randomize_asset_materials(prims, materials):
     random.shuffle(pool)
 
     for i, label in enumerate(unique_labels):
-        # Pick a material, ensuring uniqueness if possible
-        mat = pool[i % len(pool)]
-        
-        # Assign this same material to all instances of this type
-        for prim in groups[label]:
-            UsdShade.MaterialBindingAPI(prim).Bind(mat)
+        if label == "ballstem":
+            # Special Case: ballstem has 2 parts ("ballstem" and "ballstem_001")
+            # We want 2 different materials for these parts.
+            
+            # Pick first material
+            mat1 = pool[i % len(pool)]
+            
+            # Pick second material (ensure it's different)
+            offset = 1
+            mat2 = pool[(i + offset) % len(pool)]
+            while mat2.GetPath() == mat1.GetPath() and len(pool) > 1:
+                offset += 1
+                if offset >= len(pool): break
+                mat2 = pool[(i + offset) % len(pool)]
+            
+            # Apply to all 'ballstem' instances
+            for prim in groups[label]:
+                parts_found = 0
+                # Recursively search for the named parts to handle any hierarchy structure (Root/ballstem, etc.)
+                for descendant in Usd.PrimRange(prim):
+                    name = descendant.GetName()
+                    # Check for exact name match logic
+                    if name == "ballstem":
+                        UsdShade.MaterialBindingAPI(descendant).Bind(mat1)
+                        parts_found += 1
+                    elif name == "ballstem_001":
+                        UsdShade.MaterialBindingAPI(descendant).Bind(mat2)
+                        parts_found += 1
+                
+                if parts_found == 0:
+                    print(f"[SDG] WARNING: 'ballstem' parts (ballstem, ballstem_001) not found in {prim.GetPath()}. Check asset hierarchy.")
+                    # Debug: Print immediate children to help diagnosis
+                    children = [c.GetName() for c in prim.GetChildren()]
+                    print(f"[SDG] Immediate children of {prim.GetPath()}: {children}")
+
+        else:
+            # Standard Case: 1 material for the whole object
+            mat = pool[i % len(pool)]
+            
+            # Assign this same material to all instances of this type
+            for prim in groups[label]:
+                UsdShade.MaterialBindingAPI(prim).Bind(mat)
 
 def bind_material_to_meshes(root_prim, material):
     """Helper to apply material to all parts of an object."""
