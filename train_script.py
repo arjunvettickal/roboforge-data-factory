@@ -26,7 +26,7 @@ PATIENCE = 30  # early-stop patience; keep the request's default
 RUN_NAME = "train_results"
 
 
-ABLATION_ROOT = pathlib.Path(r"E:\Arjun\Ablation Study")
+ABLATION_ROOT = pathlib.Path(r"E:\Arjun\SDG\Ablation Study")
 
 def resolve_dataset_root(dataset_arg: str) -> pathlib.Path:
     """

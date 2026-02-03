@@ -182,7 +182,7 @@ def spawn_frame_assets(asset_subset):
         label = item["label"]
         count = item.get("count", 1)
         url = item["url"]
-        scale_mm = item.get("scale_min_max", [1.0, 1.0])
+        scale_mm = [1.0, 1.0] # Scaling disabled as per user request
 
         for _ in range(count):
             path = omni.usd.get_stage_next_free_path(stage, f"/World/Labeled/{label}", False)
@@ -222,6 +222,10 @@ def apply_materials_logic():
     Applies consistency logic:
     - 3 Handles -> All get same random Material X
     - 2 Clamps -> All get same random Material Y (X != Y ideally)
+    
+    SPECIAL CASE: 'ballstem'
+    - ballstem -> Material A
+    - ballstem_001 -> Material B
     """
     if not asset_materials or not spawned_assets: return
     
@@ -238,13 +242,49 @@ def apply_materials_logic():
     random.shuffle(avail_mats)
     
     for i, lbl in enumerate(unique_types):
-        mat = avail_mats[i % len(avail_mats)] # Wrap if not enough materials
-        for prim in groups[lbl]:
-            UsdShade.MaterialBindingAPI(prim).Bind(mat)
-            # Bind to all children meshes too for safety
-            for desc in Usd.PrimRange(prim):
-                if desc.IsA(UsdGeom.Gprim):
-                    UsdShade.MaterialBindingAPI(desc).Bind(mat)
+        if lbl == "ballstem":
+             # Special Case: ballstem has 2 parts ("ballstem" and "ballstem_001")
+             # We want 2 different materials for these parts.
+            
+             # Pick first material
+             mat1 = avail_mats[i % len(avail_mats)]
+            
+             # Pick second material (ensure it's different)
+             offset = 1
+             mat2 = avail_mats[(i + offset) % len(avail_mats)]
+             while mat2.GetPath() == mat1.GetPath() and len(avail_mats) > 1:
+                 offset += 1
+                 if offset >= len(avail_mats): break
+                 mat2 = avail_mats[(i + offset) % len(avail_mats)]
+             
+             for prim in groups[lbl]:
+                 parts_found = 0
+                 # Bind specific parts
+                 for descendant in Usd.PrimRange(prim):
+                     name = descendant.GetName()
+                     if name == "ballstem":
+                         UsdShade.MaterialBindingAPI(descendant).Bind(mat1)
+                         parts_found += 1
+                     elif name == "ballstem_001":
+                         UsdShade.MaterialBindingAPI(descendant).Bind(mat2)
+                         parts_found += 1
+                 
+                 if parts_found == 0:
+                     # Fallback if specific parts not found (maybe different hierarchy)
+                     UsdShade.MaterialBindingAPI(prim).Bind(mat1)
+                     for desc in Usd.PrimRange(prim):
+                         if desc.IsA(UsdGeom.Gprim):
+                             UsdShade.MaterialBindingAPI(desc).Bind(mat1)
+
+        else:
+            # Standard logic for other assets
+            mat = avail_mats[i % len(avail_mats)] # Wrap if not enough materials
+            for prim in groups[lbl]:
+                UsdShade.MaterialBindingAPI(prim).Bind(mat)
+                # Bind to all children meshes too for safety
+                for desc in Usd.PrimRange(prim):
+                    if desc.IsA(UsdGeom.Gprim):
+                        UsdShade.MaterialBindingAPI(desc).Bind(mat)
     
     print(f"[SynthRender] Applied materials to {len(unique_types)} distinct asset types.")
 
@@ -300,6 +340,12 @@ def spawn_distractors():
          object_based_sdg_utils.set_transform_attributes(prim, location=loc, rotation=rot, scale=scl)
          object_based_sdg_utils.add_colliders(prim)
          object_based_sdg_utils.add_rigid_body_dynamics(prim)
+         
+         # Random Color
+         color = (random.random(), random.random(), random.random())
+         if prim.IsA(UsdGeom.Imageable):
+             UsdGeom.Gprim(prim).CreateDisplayColorAttr().Set([color])
+             
          shape_distractors.append(prim)
 
 # ---------------------------------------------------------------------------
@@ -401,7 +447,7 @@ for i in range(num_frames):
     update_camera()
     
     # 7. Settle Physics
-    for _ in range(60): # Increased settling time
+    for _ in range(120): # Increased settling time
         simulation_app.update()
         
     # 8. Capture
@@ -412,6 +458,8 @@ print("[SynthRender] DONE.")
 # ---------------------------------------------------------------------------
 # YOLO CONVERSION
 # ---------------------------------------------------------------------------
+rep.orchestrator.wait_until_complete()
+
 def convert_coco_to_yolo_and_split(coco_root_path, yolo_root_path=None, train_ratio=0.8, seed=None):
     """Converts the generated COCO data to YOLO format."""
     

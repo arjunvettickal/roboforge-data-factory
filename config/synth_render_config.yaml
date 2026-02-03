@@ -1,11 +1,11 @@
 launch_config:
   renderer: RaytracedLighting
-  headless: false
+  headless: true
 
 env_url: ''
-working_area_size: [5, 5, 5]
+working_area_size: [4 , 4, 4]
 rt_subframes: 60
-num_frames: 10
+num_frames: 4000
 disable_render_products_between_captures: false
 simulation_duration_between_captures: 0.15
 resolution: [720, 720]
@@ -14,7 +14,7 @@ resolution: [720, 720]
 # They should sum to <= 1.0. The remainder will be "Standard" frames.
 probabilities:
   ground_plane_only: 0.08  # 5-10% requested. Using 8%.
-  dark_mode: 0.25          # 25% requested.
+  dark_mode: 0.5          # 50% requested.
 
 # Asset Loading Settings
 # It is not strict that every frame should consist of all labeled assets.
@@ -27,58 +27,58 @@ labeled_assets:
   - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Rightangle2.usd"
     label: "angle_bracket"
     count: 2
-    scale_min_max: [0.85, 1.35]
 
-  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_ballstem.usd"
+
+  - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_ballstem_v3.usd"
     label: "ballstem"
     count: 2
-    scale_min_max: [0.85, 1.35]
+
 
   - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Bilincs_Bilincs_003.usd"
     label: "u_bracket"
     count: 2
-    scale_min_max: [0.85, 1.35]
+
 
   - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_body.usd"
     label: "body"
     count: 2
-    scale_min_max: [0.85, 1.35]
+
 
   - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Bonnet.usd"
     label: "bonnet"
     count: 2
-    scale_min_max: [0.85, 1.35]
+
 
   - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Erveg2.usd"
     label: "cable_shoe"
     count: 2
-    scale_min_max: [0.85, 1.35]
+
 
   - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_handle.usd"
     label: "handle"
     count: 2
-    scale_min_max: [0.85, 1.35]
+
 
   - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Pipe_Clamp_25.usd"
     label: "pipe_clamp"
     count: 2
-    scale_min_max: [0.85, 1.35]
+
 
   - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Angle.usd"
     label: "l_bracket"
     count: 2
-    scale_min_max: [0.85, 1.35]
+
 
   - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_seat.usd"
     label: "seat"
     count: 2
-    scale_min_max: [0.85, 1.35]
+
 
 distractors:
-  shape_distractors_num: 2
-  shape_distractors_scale_min_max: [0.015, 0.15]
+  shape_distractors_num: 15
+  shape_distractors_scale_min_max: [0.2, 0.25]
   
-  mesh_distractors_num: 10
+  mesh_distractors_num: 15
   mesh_distractors_scale_min_max: [0.35, 1.35]
   mesh_distractors_urls:
     - omniverse://localhost/Library/Roboforge_collections/Distractors/0.usdc
@@ -102,8 +102,7 @@ materials:
       subidentifier: "Cardboard"
     - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Leather/Suede_Leather.mdl"
       subidentifier: "Suede_Leather"
-    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Chromium_Knurling.mdl"
-      subidentifier: "Chromium_Knurling"
+
 
   assets:
     - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Paint/Hammer_Paint.mdl"
@@ -126,16 +125,16 @@ materials:
       subidentifier: "Ground_Hard_Court"
     - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Leather/Semi_Aniline_Leather.mdl"
       subidentifier: "Semi_Aniline_Leather"
-    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Chromium_Scratched.mdl"
-      subidentifier: "Chromium_Scratched"
+    - mdl_url: "omniverse://localhost/NVIDIA/Materials/vMaterials_2/Metal/Chromium.mdl"
+      subidentifier: "Chromium"
 
 input_camera:
-  distance_min_max: [10.0, 16.0]
+  distance_min_max: [8.0, 10.0]
 
 light_settings:
   standard:
-    distant_intensity: 500.0
-    dome_intensity: 500.0
+    distant_intensity: 250.0
+    dome_intensity: 250.0
   dark_mode:
     spot_intensity: 60000.0
 writer_type: CocoWriter
@@ -156,6 +155,6 @@ writer_kwargs:
     ballstem: {id: 9, name: "ballstem", supercategory: "part", isthing: 1, color: [0, 255, 0]}
     cable_shoe: {id: 10, name: "cable_shoe", supercategory: "part", isthing: 1, color: [0, 255, 255]}
 
-yolo_output_dir: "yolo_out"
+yolo_output_dir: "E:/Arjun/SDG/Ablation Study/yolo_out_v2_001"
 yolo_split_ratio: 0.8
 yolo_split_seed: null
