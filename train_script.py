@@ -22,7 +22,7 @@ IMGSZ = 720
 BATCH = 8
 WORKERS = 4
 DEVICE = 0
-PATIENCE = 30  # early-stop patience; keep the request's default
+PATIENCE = 30  # early-stop patience;
 RUN_NAME = "train_results"
 
 

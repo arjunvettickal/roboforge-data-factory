@@ -11,23 +11,23 @@ num_frames: 4000
 disable_render_products_between_captures: false
 simulation_duration_between_captures: 0.15
 resolution:
-- 720
-- 720
+- 1080
+- 1080
 camera_look_at_target_offset: 0.10
 camera_distance_to_target_min_max:
-  - 8.00
   - 10.00
+  - 12.00
 labeled_assets_and_properties:
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Rightangle2.usd"
   label: "angle_bracket"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
   - 1.35
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_ballstem_v3.usd"
   label: "ballstem"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
@@ -35,7 +35,7 @@ labeled_assets_and_properties:
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Bilincs_Bilincs_003.usd"
   label: "u_bracket"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
@@ -43,7 +43,7 @@ labeled_assets_and_properties:
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_body.usd"
   label: "body"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
@@ -51,7 +51,7 @@ labeled_assets_and_properties:
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Bonnet.usd"
   label: "bonnet"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
@@ -59,7 +59,7 @@ labeled_assets_and_properties:
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Erveg2.usd"
   label: "cable_shoe"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
@@ -67,7 +67,7 @@ labeled_assets_and_properties:
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_handle.usd"
   label: "handle"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
@@ -75,7 +75,7 @@ labeled_assets_and_properties:
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Pipe_Clamp_25.usd"
   label: "pipe_clamp"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
@@ -83,7 +83,7 @@ labeled_assets_and_properties:
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_Angle.usd"
   label: "l_bracket"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
@@ -91,7 +91,7 @@ labeled_assets_and_properties:
 
 - url: "omniverse://localhost/Library/Roboforge_collections/Datasets/SM_seat.usd"
   label: "seat"
-  count: 2
+  count: 3
   floating: true
   scale_min_max:
   - 0.85
@@ -99,7 +99,7 @@ labeled_assets_and_properties:
 
 writer_type: CocoWriter
 writer_kwargs:
-  output_dir: "coco_out"
+  output_dir: "coco_out_new"
   image_output_format: "jpg"
   semantic_types: ["class"]
   coco_categories:
@@ -165,7 +165,7 @@ writer_kwargs:
       color: [0, 255, 255]
 yolo_split_ratio: 0.8
 yolo_split_seed: null
-yolo_output_dir: "E:/Arjun/SDG/Ablation Study/yolo_out_08"
+yolo_output_dir: "E:/Arjun/SDG/Ablation Study/yolo_out_09"
 
 shape_distractors_scale_min_max:
   - 0.20
