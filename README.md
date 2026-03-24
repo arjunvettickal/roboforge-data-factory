@@ -1,4 +1,4 @@
-# RoboForge Data Factory (Repo Under Construction)
+# RoboForge Data Factory
 *A customizable Synthetic Data Generation pipeline for physical AI.*
 
 ![RoboForge Data Factory Demo](demo.gif.gif)
